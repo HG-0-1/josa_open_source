@@ -269,8 +269,8 @@ export default function App() {
           <button onClick={() => navigateTo('support')} className="text-right bg-sandLight p-8 rounded-3xl border border-moss-100 shadow-soft hover:shadow-floating hover:-translate-y-1 transition-all cursor-pointer space-y-4">
             <span className="w-12 h-12 rounded-2xl bg-sage/20 text-moss-800 flex items-center justify-center text-xl"><i className="fa-solid fa-shield-heart" aria-hidden="true"></i></span>
             <h3 className="text-xl font-bold text-moss-900">شبكة الدعم والمساندة</h3>
-            <p className="text-xs text-moss-700 leading-relaxed">دليل موثوق ومباشر للاتصال بخطوط الدعم النفسي المجانية والطوارئ في الأردن عند حاجتك للتحدث مع أخصائي.</p>
-            <span className="text-xs font-bold text-moss-700 flex items-center gap-2"><span>عرض الأرقام</span><i className="fa-solid fa-arrow-left" aria-hidden="true"></i></span>
+            <p className="text-xs text-moss-700 leading-relaxed">معلومات الاتصال بالطوارئ عند الحاجة إلى تدخل عاجل.</p>
+            <span className="text-xs font-bold text-moss-700 flex items-center gap-2"><span>معلومات الطوارئ</span><i className="fa-solid fa-arrow-left" aria-hidden="true"></i></span>
           </button>
         </div>
       </section>}
@@ -377,7 +377,7 @@ export default function App() {
         <div className="bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
           <div className="border-b border-moss-100 pb-6">
             <span className="text-xs font-bold text-terracotta-600 uppercase tracking-wider block mb-1">Crisis Direct Dial Hub</span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">شبكة الدعم والمساندة المباشرة</h2>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">معلومات الطوارئ</h2>
           </div>
 
           {emergencyMessage && <div role="alert" className="rounded-2xl border border-terracotta-500/40 bg-terracotta-100 p-4 text-xs leading-7 text-moss-900">
@@ -386,21 +386,9 @@ export default function App() {
             <p className="mt-2 font-semibold">إذا كنت في خطر مباشر، اتصل بالطوارئ 911 الآن أو اطلب من شخص تثق به أن يبقى معك.</p>
           </div>}
 
-          <p className="text-xs sm:text-sm text-moss-700 leading-relaxed">إذا كنت تمر بحالة طوارئ شديدة أو تحتاج للتحدث مع مختص نفسي مرخص فوراً، يمكنك الاتصال المباشر بالجهات الرسمية المعتمدة في الأردن:</p>
+          <p className="text-xs sm:text-sm text-moss-700 leading-relaxed">للحالات الطارئة التي تحتاج إلى تدخل عاجل، اتصل بالطوارئ على الرقم 911.</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-moss-50 border border-moss-200 p-6 rounded-3xl space-y-4 flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="bg-moss-200 text-moss-900 text-[10px] font-bold px-3 py-1 rounded-full">استشارة مجانية وسرية</span>
-                  <i className="fa-solid fa-headset text-moss-700 text-xl" aria-hidden="true"></i>
-                </div>
-                <h3 className="font-bold text-moss-900 text-lg">خط المساندة النفسية الوطني</h3>
-                <p className="text-xs text-moss-700 leading-relaxed">إرشاد ومساندة نفسية مهنية مقدمة من مؤسسة نهر الأردن والجهات المعتمدة.</p>
-              </div>
-              <button onClick={() => confirmEmergencyCall('110')} className="w-full bg-moss-700 hover:bg-moss-900 text-sand font-bold py-3.5 rounded-2xl text-sm transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-phone" aria-hidden="true"></i> الاتصال بـ 110</button>
-            </div>
-
+          <div className="grid grid-cols-1 gap-6">
             <div className="bg-terracotta-100/50 border border-terracotta-500/30 p-6 rounded-3xl space-y-4 flex flex-col justify-between">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
