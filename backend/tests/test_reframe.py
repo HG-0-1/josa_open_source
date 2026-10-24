@@ -1,11 +1,37 @@
 import json
+import os
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 
 from main import app
 
 
 class ReframeTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.analysis = {
+            "distortion": "نمط تفكير محتمل: التعميم الزائد",
+            "reality_check": "تجربة واحدة لا تحدد كل قدراتك.",
+            "reframed_thought": "المقابلة ما نجحت، لكن ممكن أتعلم منها.",
+        }
+        environment = patch.dict(os.environ, {
+            "MOTANAFAS_DEV_MOCK_AI": "false",
+            "OLLAMA_API_URL": "http://127.0.0.1:11434/api/generate",
+            "OLLAMA_MODEL": "llama3.2:3b",
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+        http_patch = patch("services.ai_service.urlopen")
+        self.http = http_patch.start()
+        self.addCleanup(http_patch.stop)
+        self.http_response = self.http.return_value.__enter__.return_value
+        self.set_generated_analysis(self.analysis)
+
+    def set_generated_analysis(self, analysis):
+        self.http_response.read.return_value = json.dumps({
+            "response": json.dumps(analysis, ensure_ascii=False), "done": True,
+        }, ensure_ascii=False).encode()
+
     async def post(self, payload: object) -> tuple[int, dict]:
         """Exercise the ASGI app without adding an HTTP testing dependency."""
         body = json.dumps(payload).encode()
@@ -52,6 +78,113 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
             "reality_check": "تجربة واحدة لا تحدد كل قدراتك.",
             "reframed_thought": "المقابلة ما نجحت، لكن ممكن أتعلم منها.",
         })
+        self.http.assert_called_once()
+
+    async def test_ollama_success_and_configuration(self):
+        analysis = {
+            "distortion": "التعميم الزائد",
+            "reality_check": "تجربة واحدة لا تعني الفشل دائماً.",
+            "reframed_thought": "يمكنني التعلم من هذه التجربة.",
+        }
+        self.set_generated_analysis(analysis)
+        with patch.dict(os.environ, {
+            "OLLAMA_API_URL": "http://127.0.0.1:11435/api/generate",
+            "OLLAMA_MODEL": "test-model",
+        }):
+            status, response = await self.post({"text": "حاسس إني فاشل"})
+        self.assertEqual(status, 200)
+        self.assertEqual(response, {"emergency": False, **analysis})
+        request = self.http.call_args.args[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:11435/api/generate")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(self.http.call_args.kwargs["timeout"], 25)
+        payload = json.loads(request.data)
+        self.assertEqual(payload["model"], "test-model")
+        self.assertIs(payload["stream"], False)
+        self.assertEqual(payload["format"], "json")
+        self.assertIn("non-clinical", payload["system"])
+        self.assertIn("Do not invent personal facts", payload["system"])
+        self.assertIn("Never guarantee safety, symptom improvement", payload["system"])
+        self.assertIn("values in Arabic", payload["system"])
+
+    async def test_defaults_and_english_prompt(self):
+        with patch.dict(os.environ):
+            for name in ("OLLAMA_API_URL", "OLLAMA_MODEL", "MOTANAFAS_DEV_MOCK_AI"):
+                os.environ.pop(name, None)
+            status, _ = await self.post({"text": "I failed my job interview"})
+        self.assertEqual(status, 200)
+        request = self.http.call_args.args[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
+        payload = json.loads(request.data)
+        self.assertEqual(payload["model"], "llama3.2:3b")
+        self.assertIn("values in English", payload["system"])
+
+    async def test_unavailable_or_timeout_returns_503(self):
+        private_text = "هذه فكرة خاصة للاختبار"
+        errors = (
+            TimeoutError(private_text), URLError(private_text),
+            ConnectionRefusedError(private_text),
+            HTTPError("http://localhost", 500, private_text, {}, None),
+        )
+        for error in errors:
+            with self.subTest(error_type=type(error).__name__):
+                self.http.side_effect = error
+                status, response = await self.post({"text": private_text})
+                self.assertEqual(status, 503)
+                self.assertEqual(response, {
+                    "detail": "خدمة المساعدة الآلية غير متاحة حالياً. يرجى المحاولة لاحقاً."
+                })
+                self.assertNotIn(private_text, json.dumps(response, ensure_ascii=False))
+
+    async def test_invalid_ollama_json_returns_503(self):
+        invalid_bodies = (
+            b"not json", b"[]", b"{}", b'{"response": null}',
+            b'{"response": "not json"}',
+            json.dumps({"response": "{}"}).encode(),
+            json.dumps({"response": "[]"}).encode(),
+            b"x" * 65537,
+        )
+        for index, body in enumerate(invalid_bodies):
+            with self.subTest(case=index):
+                self.http_response.read.return_value = body
+                status, response = await self.post({"text": "حاسس إني فاشل"})
+                self.assertEqual(status, 503)
+                self.assertNotIn("distortion", response)
+
+    async def test_invalid_analysis_schema_returns_503(self):
+        for field in self.analysis:
+            for invalid in (None, "", "   ", 123, [], "x" * 1001):
+                with self.subTest(field=field, value_type=type(invalid).__name__):
+                    self.set_generated_analysis({**self.analysis, field: invalid})
+                    status, _ = await self.post({"text": "حاسس إني فاشل"})
+                    self.assertEqual(status, 503)
+        self.set_generated_analysis({**self.analysis, "emergency": True})
+        status, _ = await self.post({"text": "حاسس إني فاشل"})
+        self.assertEqual(status, 503)
+
+    async def test_markdown_wrapped_json(self):
+        self.http_response.read.return_value = json.dumps({
+            "response": "```json\n" + json.dumps(self.analysis) + "\n```",
+        }).encode()
+        status, response = await self.post({"text": "حاسس إني فاشل"})
+        self.assertEqual(status, 200)
+        self.assertEqual(response, {"emergency": False, **self.analysis})
+
+    async def test_development_mock_requires_explicit_opt_in(self):
+        self.http.side_effect = ConnectionRefusedError
+        with patch.dict(os.environ, {"MOTANAFAS_DEV_MOCK_AI": "true"}):
+            status, response = await self.post({"text": "حاسس إني فاشل"})
+        self.assertEqual(status, 200)
+        self.assertEqual(response, {"emergency": False, **self.analysis})
+        self.http.assert_not_called()
+
+    async def test_safety_routed_input_never_calls_ollama(self):
+        self.http.side_effect = AssertionError("Ollama must not receive urgent input")
+        status, response = await self.post({"text": "أنا ناوي أؤذي نفسي الآن"})
+        self.assertEqual(status, 200)
+        self.assertIs(response["emergency"], True)
+        self.assertNotIn("distortion", response)
+        self.http.assert_not_called()
 
     async def test_invalid_input(self):
         for payload in ({}, {"text": ""}, {"text": "   "}, {"text": "ab"},

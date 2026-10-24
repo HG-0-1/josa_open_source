@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ReframeRequest(BaseModel):
@@ -17,6 +17,20 @@ class ReframeResponse(BaseModel):
     distortion: str
     reality_check: str
     reframed_thought: str
+
+
+class OllamaAnalysis(BaseModel):
+    """Validate generated content before exposing it through the public API."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+
+    distortion: str = Field(min_length=1, max_length=1000)
+    reality_check: str = Field(min_length=1, max_length=1000)
+    reframed_thought: str = Field(min_length=1, max_length=1000)
+
+
+class OllamaGenerateResponse(BaseModel):
+    response: str = Field(strict=True, min_length=1)
 
 
 class SafetyResponse(BaseModel):
