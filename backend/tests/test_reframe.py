@@ -5,7 +5,8 @@ import logging
 import os
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError, URLError
+from requests import Response
+from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout, Timeout
 
 from main import app
 
@@ -13,7 +14,7 @@ from main import app
 class ReframeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.analysis = {
-            "distortion": "نمط تفكير محتمل: التعميم الزائد",
+            "distortion": "التعميم الزائد",
             "reality_check": "تجربة واحدة لا تحدد كل قدراتك.",
             "reframed_thought": "المقابلة ما نجحت، لكن ممكن أتعلم منها.",
         }
@@ -25,15 +26,24 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         })
         environment.start()
         self.addCleanup(environment.stop)
-        http_patch = patch("services.ai_service.urlopen")
+        http_patch = patch("services.ai_service.requests.post")
         self.http = http_patch.start()
         self.addCleanup(http_patch.stop)
-        self.http_response = self.http.return_value.__enter__.return_value
+        self.http_response = Response()
+        self.http_response.status_code = 200
+        self.http.return_value = self.http_response
         self.set_generated_analysis(self.analysis)
 
+    def generated_analysis(self, analysis):
+        data = dict(analysis)
+        label = data.pop("distortion")
+        data["distortion_key"] = "Overgeneralization" if label == "التعميم الزائد" else label
+        return data
+
     def set_generated_analysis(self, analysis):
-        self.http_response.read.return_value = json.dumps({
-            "response": json.dumps(analysis, ensure_ascii=False), "done": True,
+        self.http_response._content = json.dumps({
+            "response": json.dumps(self.generated_analysis(analysis), ensure_ascii=False),
+            "done": True,
         }, ensure_ascii=False).encode()
 
     async def post(self, payload: object) -> tuple[int, dict]:
@@ -78,7 +88,7 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(response, {
             "emergency": False,
-            "distortion": "نمط تفكير محتمل: التعميم الزائد",
+            "distortion": "التعميم الزائد",
             "reality_check": "تجربة واحدة لا تحدد كل قدراتك.",
             "reframed_thought": "المقابلة ما نجحت، لكن ممكن أتعلم منها.",
         })
@@ -98,11 +108,9 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
             status, response = await self.post({"text": "حاسس إني فاشل"})
         self.assertEqual(status, 200)
         self.assertEqual(response, {"emergency": False, **analysis})
-        request = self.http.call_args.args[0]
-        self.assertEqual(request.full_url, "http://127.0.0.1:11435/api/generate")
-        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(self.http.call_args.args[0], "http://127.0.0.1:11435/api/generate")
         self.assertEqual(self.http.call_args.kwargs["timeout"], 90)
-        payload = json.loads(request.data)
+        payload = self.http.call_args.kwargs["json"]
         self.assertEqual(payload["model"], "test-model")
         self.assertIs(payload["stream"], False)
         self.assertEqual(payload["format"], "json")
@@ -118,10 +126,9 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
                 os.environ.pop(name, None)
             status, _ = await self.post({"text": "I failed my job interview"})
         self.assertEqual(status, 200)
-        request = self.http.call_args.args[0]
-        self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
+        self.assertEqual(self.http.call_args.args[0], "http://127.0.0.1:11434/api/generate")
         self.assertEqual(self.http.call_args.kwargs["timeout"], 90)
-        payload = json.loads(request.data)
+        payload = self.http.call_args.kwargs["json"]
         self.assertEqual(payload["model"], "llama3.2:3b")
         self.assertIn("values in English", payload["system"])
 
@@ -178,26 +185,22 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_connection_refused_returns_private_503(self):
         private_text = "هذه فكرة حساسة خاصة للاختبار"
-        for error in (ConnectionRefusedError(private_text),
-                      URLError(ConnectionRefusedError(private_text))):
+        for error in (ConnectionError(private_text),
+                      ConnectionError(ConnectionRefusedError(private_text))):
             with self.subTest(error_type=type(error).__name__):
                 self.http.side_effect = error
                 await self.assert_private_unavailable_response()
 
     async def test_timeout_returns_private_503(self):
         private_text = "هذه فكرة حساسة خاصة للاختبار"
-        for error in (TimeoutError(private_text), URLError(TimeoutError(private_text))):
+        for error in (Timeout(private_text), ConnectTimeout(private_text), ReadTimeout(private_text)):
             with self.subTest(error_type=type(error).__name__):
                 self.http.side_effect = error
                 await self.assert_private_unavailable_response()
-        self.http.side_effect = None
-        self.http_response.read.side_effect = TimeoutError(private_text)
-        await self.assert_private_unavailable_response()
 
     async def test_http_error_returns_private_503(self):
         private_text = "هذه فكرة حساسة خاصة للاختبار"
-        errors = (URLError(private_text),
-                  HTTPError("http://localhost", 500, private_text, {}, None))
+        errors = (HTTPError(private_text),)
         for error in errors:
             with self.subTest(error_type=type(error).__name__):
                 self.http.side_effect = error
@@ -207,7 +210,7 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         for index, body in enumerate((b"", b'{"response": ""}',
                                       b'{"response": "   "}', b'{"response": null}')):
             with self.subTest(case=index):
-                self.http_response.read.return_value = body
+                self.http_response._content = body
                 await self.assert_private_unavailable_response()
 
     async def test_invalid_ollama_json_returns_503(self):
@@ -223,7 +226,7 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         )
         for index, body in enumerate(invalid_bodies):
             with self.subTest(case=index):
-                self.http_response.read.return_value = body
+                self.http_response._content = body
                 await self.assert_private_unavailable_response()
 
     async def test_invalid_analysis_schema_returns_503(self):
@@ -237,20 +240,75 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         status, _ = await self.post({"text": "حاسس إني فاشل"})
         self.assertEqual(status, 503)
 
+    async def test_jood_distortion_mapping_in_both_languages(self):
+        labels = {
+            "Catastrophizing": ("التهويل وتوقع الأسوأ", "Catastrophizing"),
+            "Overgeneralization": ("التعميم الزائد", "Overgeneralization"),
+            "Labeling": ("وسم الذات ولوم النفس", "Labeling & Self-Blame"),
+            "All-or-Nothing": ("التفكير الثنائي (كل شيء أو لا شيء)", "All-or-Nothing Thinking"),
+            "Mind Reading": ("قراءة الأفكار والقفز للاستنتاجات", "Mind Reading / Jumping to Conclusions"),
+            "Balanced": ("تفكير واقعي متزن", "Realistic & Balanced Thinking"),
+        }
+        for key, translations in labels.items():
+            for language, text in enumerate(("حاسس إني فاشل", "I feel like a failure")):
+                with self.subTest(key=key, language=language):
+                    self.http_response._content = json.dumps({"response": json.dumps({
+                        "distortion_key": key,
+                        "reality_check": self.analysis["reality_check"],
+                        "reframed_thought": self.analysis["reframed_thought"],
+                    })}).encode()
+                    status, response = await self.post({"text": text})
+                    self.assertEqual(status, 200)
+                    self.assertEqual(response, {
+                        "emergency": False, **self.analysis, "distortion": translations[language]
+                    })
+                    prompt = self.http.call_args.kwargs["json"]["prompt"]
+                    self.assertIn('ONE exact key', prompt)
+                    self.assertIn('Examples:', prompt)
+
+    async def test_unknown_or_missing_distortion_key_is_not_fabricated(self):
+        for value in ("Unknown", "", None):
+            self.http_response._content = json.dumps({"response": json.dumps({
+                "distortion_key": value,
+                "reality_check": self.analysis["reality_check"],
+                "reframed_thought": self.analysis["reframed_thought"],
+            })}).encode()
+            await self.assert_private_unavailable_response()
+        self.http_response._content = json.dumps({"response": json.dumps({
+            "reality_check": self.analysis["reality_check"],
+            "reframed_thought": self.analysis["reframed_thought"],
+        })}).encode()
+        await self.assert_private_unavailable_response()
+
+    async def test_response_http_status_error_returns_private_503(self):
+        for code in (404, 500, 503):
+            with self.subTest(status=code):
+                self.http_response.status_code = code
+                self.http_response.reason = "هذه فكرة حساسة خاصة للاختبار"
+                await self.assert_private_unavailable_response()
+
+    async def test_backend_safety_is_authoritative(self):
+        with patch("services.ai_service.check_safety", side_effect=AssertionError) as checker:
+            status, response = await self.post({"text": "أنا مش ناوي أؤذي نفسي الآن"})
+        self.assertEqual(status, 200)
+        self.assertIs(response["emergency"], False)
+        checker.assert_not_called()
+
     async def test_markdown_wrapped_json(self):
-        self.http_response.read.return_value = json.dumps({
-            "response": "```json\n" + json.dumps(self.analysis) + "\n```",
+        self.http_response._content = json.dumps({
+            "response": "```json\n" + json.dumps(self.generated_analysis(self.analysis)) + "\n```",
         }).encode()
         status, response = await self.post({"text": "حاسس إني فاشل"})
         self.assertEqual(status, 200)
         self.assertEqual(response, {"emergency": False, **self.analysis})
 
     async def test_development_mock_requires_explicit_opt_in(self):
-        self.http.side_effect = ConnectionRefusedError
+        self.http.side_effect = ConnectionError
         with patch.dict(os.environ, {"MOTANAFAS_DEV_MOCK_AI": "true"}):
             status, response = await self.post({"text": "حاسس إني فاشل"})
         self.assertEqual(status, 200)
-        self.assertEqual(response, {"emergency": False, **self.analysis})
+        self.assertEqual(response, {"emergency": False, **self.analysis,
+                                   "distortion": "نمط تفكير محتمل: التعميم الزائد"})
         self.http.assert_not_called()
 
     async def test_safety_routed_input_never_calls_ollama(self):

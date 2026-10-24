@@ -4,7 +4,7 @@ import json
 import logging
 import unittest
 from unittest.mock import patch
-from urllib.error import URLError
+from requests.exceptions import ConnectionError
 
 from main import app
 
@@ -13,7 +13,7 @@ class PanicTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         # Every grounding test runs with Ollama unavailable, without contacting it.
         http_patch = patch(
-            "services.ai_service.urlopen", side_effect=URLError(ConnectionRefusedError())
+            "services.ai_service.requests.post", side_effect=ConnectionError("Ollama unavailable")
         )
         self.http = http_patch.start()
         self.addCleanup(http_patch.stop)

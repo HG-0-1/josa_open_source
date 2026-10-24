@@ -25,6 +25,14 @@ non-clinical prompts, Pydantic validation, a configurable HTTP timeout, and no
 fabricated fallback. Unavailable Ollama, HTTP errors, timeouts, and invalid
 responses return HTTP 503 with a generic Arabic `detail` message.
 
+The updated integration uses `requests.post` and preserves Jood's bilingual
+few-shot prompts and distortion label mapping. A separate system instruction
+retains the backend's non-clinical role and prohibits invented personal facts
+or guarantees of safety/improvement. Ollama returns `distortion_key` internally;
+the backend validates it and exposes the translated `distortion` field as
+before. Invalid/missing keys are failures, not default classifications. Tests
+mock `services.ai_service.requests.post`, including HTTP errors and timeouts.
+
 The backend safety service checks requests before generation. Its preliminary
 phrase rules are not clinically validated; a non-match does not establish
 safety. Jood's separate keyword checker is not used. The backend does not log

@@ -24,7 +24,10 @@ class OllamaAnalysis(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
 
-    distortion: str = Field(min_length=1, max_length=1000)
+    distortion_key: Literal[
+        "Catastrophizing", "Overgeneralization", "Labeling", "All-or-Nothing",
+        "Mind Reading", "Balanced",
+    ]
     reality_check: str = Field(min_length=1, max_length=1000)
     reframed_thought: str = Field(min_length=1, max_length=1000)
 
