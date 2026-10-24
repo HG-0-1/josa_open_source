@@ -7,13 +7,6 @@ const API_ROOT = '/api';
 
 const SAFETY_PATTERN = /(انتحار|أنتحر|بدي\s+أنتحر|بدي\s+أموت|ما\s+بدي\s+أعيش|انهي\s+حياتي|إنهاء\s+حياتي|إيذاء\s+(النفس|نفسي)|أؤذي\s+نفسي|أجرح\s+نفسي|أقتل\s+نفسي|أفكر\s+ب(إيذاء|قتل)\s+نفسي|مش\s+آمن|مو\s+آمن|غير\s+آمن|خطر\s+مباشر)/i;
 
-const avatarSpeeches = {
-  hero: 'أهلاً بك في مُتَنَفَّس. اختر الأداة التي تناسب احتياجك الآن للبدء.',
-  cbt: 'هنا سنفكك فكرتك خطوة بخطوة لنستخرج التشوهات ونبني منظوراً واقعياً مريحاً.',
-  panic: 'تنفس معي ببطء. خذ شهيقاً عميقاً ولاحظ حواسك حولك.',
-  support: 'أرقام الدعم الوطني المباشرة متاحة لك دائماً عند حاجتك للتحدث مع مختص.',
-};
-
 const thoughts = [
   { label: 'إحباط الإنجاز والعمل', text: 'أشعر بتشتت وإحباط شديد ولا أستطيع إنجاز المهام المطلوبة مني' },
   { label: 'خوف وفقدان السيطرة', text: 'خائف جداً من فقدان السيطرة والقلق يتزايد بشكل لا أستطيعه' },
@@ -75,10 +68,7 @@ export default function App() {
   const navigate = useNavigate();
   const view = ROUTE_VIEW[location.pathname] || 'hero';
 
-  const [bubble, setBubble] = useState(avatarSpeeches.hero);
   const [toast, setToast] = useState('');
-  const speakingRef = useRef(false);
-  const typingRef = useRef(null);
   const requestId = useRef(0);
 
   const [thought, setThought] = useState('');
@@ -99,43 +89,13 @@ export default function App() {
     window.setTimeout(() => setToast(''), 3200);
   }
 
-  function typeOut(text) {
-    window.clearInterval(typingRef.current);
-    setBubble('');
-    speakingRef.current = true;
-    let index = 0;
-    typingRef.current = window.setInterval(() => {
-      index += 1;
-      setBubble(text.slice(0, index));
-      if (index >= text.length) {
-        window.clearInterval(typingRef.current);
-        speakingRef.current = false;
-      }
-    }, 30);
-  }
-
-  function speak(text) {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ar-SA';
-    utterance.rate = 0.9;
-    window.speechSynthesis.speak(utterance);
-  }
-
   function navigateTo(nextView) {
     navigate(VIEW_ROUTE[nextView]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  useEffect(() => {
-    typeOut(avatarSpeeches[view]);
-  }, [view]);
-
   useEffect(() => () => {
-    window.clearInterval(typingRef.current);
     requestId.current += 1;
-    window.speechSynthesis?.cancel();
   }, []);
 
   useEffect(() => {
@@ -171,7 +131,6 @@ export default function App() {
     const cleaned = thought.trim();
     if (!cleaned || cbtLoading) return;
     const id = ++requestId.current;
-    window.speechSynthesis?.cancel();
     setCbtLoading(true);
     setCbtResult(null);
 
@@ -193,7 +152,6 @@ export default function App() {
       }
       setCbtResult(data);
       setCbtStage('distortion');
-      typeOut('لاحظنا ميل الفكرة للتهويل. دعنا نبني الآن صياغة متوازنة جديدة.');
     } catch (error) {
       notify(error.message || 'تعذّر الاتصال بالخادم. حاول مرة أخرى.');
     } finally {
@@ -203,8 +161,6 @@ export default function App() {
 
   function buildAlternative() {
     setCbtStage('result');
-    if (cbtResult?.reframed_thought) speak(cbtResult.reframed_thought);
-    typeOut('ممتاز! أعدت صياغة الفكرة بمنظور متوازن وعملي.');
   }
 
   async function chooseGrounding(step) {
@@ -222,7 +178,6 @@ export default function App() {
       const reply = data.reply || data.message;
       if (reply) {
         setGroundingReply(reply);
-        speak(reply);
       }
       if (data.completed === true) setGroundingCompleted(true);
     } catch {
@@ -280,27 +235,6 @@ export default function App() {
       </div>
     </header>
 
-    <div className="fixed bottom-6 right-6 z-30 pointer-events-none">
-      <div className="relative pointer-events-auto">
-        <div className="absolute bottom-full right-0 mb-4 w-72 sm:w-80 bg-sandLight/95 backdrop-blur-md border-2 border-moss-200 p-4 rounded-3xl shadow-floating text-right text-xs leading-relaxed text-moss-900 transition-all duration-300">
-          <div className="flex items-center justify-between border-b border-moss-100 pb-2 mb-2">
-            <span className="font-bold text-moss-700 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/>أنيس • المرفق الذكي
-            </span>
-            <button onClick={() => typeOut('الصوت التفاعلي مفعّل لمرافقتك.')} className="text-[10px] text-moss-600 hover:text-moss-900 bg-moss-50 px-2 py-0.5 rounded-full font-bold">صوت <i className="fa-solid fa-volume-high mr-1" aria-hidden="true"></i></button>
-          </div>
-          <p className="font-medium min-h-10">{bubble}</p>
-        </div>
-
-        <button onClick={() => typeOut('أنا هنا لمرافقتك دائماً. خذ وقتك كاملاً ولا تستعجل الأمور.')} className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-gradient-to-b from-moss-100 to-sandLight border-2 border-moss-200 shadow-floating relative overflow-hidden group cursor-pointer" aria-label="تفاعل مع أنيس">
-          <AvatarCanvas speakingRef={speakingRef}/>
-          <span className="absolute bottom-1 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <span className="bg-moss-900/80 text-sand text-[9px] px-2 py-0.5 rounded-full font-bold">انقر للتفاعل</span>
-          </span>
-        </button>
-      </div>
-    </div>
-
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full relative">
       {view === 'hero' && <section className="app-view space-y-16">
         <div className="bg-gradient-to-br from-sandLight via-sand to-moss-50 rounded-3xl p-8 sm:p-14 border border-moss-100 shadow-soft relative overflow-hidden">
@@ -323,7 +257,7 @@ export default function App() {
           <button onClick={() => navigateTo('cbt')} className="text-right bg-sandLight p-8 rounded-3xl border border-moss-100 shadow-soft hover:shadow-floating hover:-translate-y-1 transition-all cursor-pointer space-y-4">
             <span className="w-12 h-12 rounded-2xl bg-moss-100 text-moss-700 flex items-center justify-center text-xl"><i className="fa-solid fa-diagram-project" aria-hidden="true"></i></span>
             <h3 className="text-xl font-bold text-moss-900">مُخطط الأفكار التفاعلي</h3>
-            <p className="text-xs text-moss-700 leading-relaxed">خريطة تفاعلية لتفكيك الأفكار المزعجة بصرياً، استخراج الأوهام المعرفية، وبناء بدائل واقعية بدعم من المرفق الذكي.</p>
+            <p className="text-xs text-moss-700 leading-relaxed">خريطة تفاعلية لتفكيك الأفكار المزعجة بصرياً، استخراج الأوهام المعرفية، وبناء بدائل واقعية بخطوات واضحة.</p>
             <span className="text-xs font-bold text-moss-700 flex items-center gap-2"><span>خوض التجربة</span><i className="fa-solid fa-arrow-left" aria-hidden="true"></i></span>
           </button>
           <button onClick={() => navigateTo('panic')} className="text-right bg-sandLight p-8 rounded-3xl border border-moss-100 shadow-soft hover:shadow-floating hover:-translate-y-1 transition-all cursor-pointer space-y-4">
@@ -489,77 +423,4 @@ export default function App() {
       <p>مُتَنَفَّس © 2026 • منصة داعمة للتأمل والاتزان الذاتي ولا تغني عن الاستشارة الطبية المباشرة</p>
     </footer>
   </div>;
-}
-
-function AvatarCanvas({ speakingRef }) {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const THREE = window.THREE;
-    const container = containerRef.current;
-    if (!THREE || !container) return undefined;
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-    camera.position.set(0, 0, 4.2);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.appendChild(renderer.domElement);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const dirLight = new THREE.DirectionalLight(0xA3B18A, 1.2);
-    dirLight.position.set(2, 4, 3);
-    scene.add(dirLight);
-
-    const group = new THREE.Group();
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.85, 32, 32),
-      new THREE.MeshStandardMaterial({ color: 0x52796F, roughness: 0.25, metalness: 0.1 }),
-    );
-    group.add(head);
-
-    const eyeGeo = new THREE.SphereGeometry(0.09, 16, 16);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
-    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-    leftEye.position.set(-0.28, 0.15, 0.78);
-    group.add(leftEye);
-    const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-    rightEye.position.set(0.28, 0.15, 0.78);
-    group.add(rightEye);
-
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(1.2, 0.03, 16, 100),
-      new THREE.MeshBasicMaterial({ color: 0xE07A5F }),
-    );
-    ring.rotation.x = Math.PI / 2.2;
-    group.add(ring);
-    scene.add(group);
-
-    const clock = new THREE.Clock();
-    let frame = 0;
-    let active = true;
-
-    function animate() {
-      if (!active) return;
-      frame = requestAnimationFrame(animate);
-      const t = clock.getElapsedTime();
-      group.position.y = Math.sin(t * 1.8) * 0.08;
-      group.rotation.y = Math.sin(t * 0.9) * 0.15;
-      ring.rotation.z = t * 0.4;
-      head.scale.setScalar(speakingRef.current ? 1 + Math.sin(t * 12) * 0.05 : 1);
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    return () => {
-      active = false;
-      cancelAnimationFrame(frame);
-      renderer.dispose();
-      container.removeChild(renderer.domElement);
-    };
-  }, [speakingRef]);
-
-  return <div ref={containerRef} className="w-full h-full"/>;
 }
