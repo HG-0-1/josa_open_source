@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { BookOpen, Brain, House, LifeBuoy, Siren, Wind } from 'lucide-react';
+import JournalPage from './JournalPage.jsx';
 
-const ROUTE_VIEW = { '/': 'hero', '/cbt': 'cbt', '/panic': 'panic', '/support': 'support' };
-const VIEW_ROUTE = { hero: '/', cbt: '/cbt', panic: '/panic', support: '/support' };
+const ROUTE_VIEW = { '/': 'hero', '/cbt': 'cbt', '/panic': 'panic', '/support': 'support', '/journal': 'journal' };
+const VIEW_ROUTE = { hero: '/', cbt: '/cbt', panic: '/panic', support: '/support', journal: '/journal' };
 const API_ROOT = '/api';
 
 const SAFETY_PATTERN = /(انتحار|أنتحر|بدي\s+أنتحر|بدي\s+أموت|ما\s+بدي\s+أعيش|انهي\s+حياتي|إنهاء\s+حياتي|إيذاء\s+(النفس|نفسي)|أؤذي\s+نفسي|أجرح\s+نفسي|أقتل\s+نفسي|أفكر\s+ب(إيذاء|قتل)\s+نفسي|مش\s+آمن|مو\s+آمن|غير\s+آمن|خطر\s+مباشر)/i;
@@ -258,15 +260,15 @@ export default function App() {
     ? getDistortionPresentation(cbtResult.distortion)
     : null;
 
-  return <div className="min-h-screen flex flex-col justify-between selection:bg-moss-200 selection:text-moss-900 pb-24 md:pb-0">
+  return <div className="app-shell min-h-screen flex flex-col justify-between selection:bg-moss-200 selection:text-moss-900">
     <header className="sticky top-0 z-40 bg-sand/90 backdrop-blur-md border-b border-moss-100/80 transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          <button onClick={() => navigateTo('hero')} className="flex items-center gap-3 cursor-pointer group text-right">
-            <span className="w-11 h-11 rounded-2xl bg-moss-700 text-sand flex items-center justify-center font-bold text-xl shadow-soft group-hover:scale-105 transition-transform">مـ</span>
+        <div className="site-header-row flex items-center justify-between">
+          <button onClick={() => navigateTo('hero')} className="brand-button flex items-center gap-2 sm:gap-3 cursor-pointer group text-right" aria-label="مُتَنَفَّس - الرئيسية">
+            <span className="brand-mark w-11 h-11 rounded-2xl bg-moss-700 text-sand flex items-center justify-center font-bold text-xl shadow-soft group-hover:scale-105 transition-transform">مـ</span>
             <span className="block">
-              <span className="text-xl font-extrabold text-moss-900 block leading-tight">مُتَنَفَّس</span>
-              <span className="text-[11px] text-moss-500 font-medium">مساعد التوازن النفسي التفاعلي</span>
+              <span className="brand-name text-xl font-extrabold text-moss-900 block leading-tight">مُتَنَفَّس</span>
+              <span className="brand-subtitle text-[11px] text-moss-500 font-medium">مساعد التوازن النفسي التفاعلي</span>
             </span>
           </button>
 
@@ -275,46 +277,54 @@ export default function App() {
               { id: 'hero', label: 'الرئيسية' },
               { id: 'cbt', label: 'مُخطط الأفكار (CBT)' },
               { id: 'panic', label: 'غرفة الهلع والتنفس' },
+              { id: 'journal', label: 'يومياتي' },
               { id: 'support', label: 'شبكة الدعم الطارئ' },
             ].map(item => <button key={item.id} onClick={() => navigateTo(item.id)} aria-current={view === item.id ? 'page' : undefined} className={`px-5 py-2 rounded-full text-xs font-bold transition-all ${view === item.id ? 'text-moss-900 bg-sand shadow-sm' : 'text-moss-700 hover:text-moss-900'}`}>{item.label}</button>)}
           </nav>
 
-          <button onClick={() => navigateTo('panic')} className="bg-terracotta-500 hover:bg-terracotta-600 text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-soft flex items-center gap-2 transition-all hover:scale-105">
-            <span className="w-2 h-2 rounded-full bg-white animate-ping"/>
-            <i className="fa-solid fa-wind text-xs" aria-hidden="true"></i>
-            <span>طوارئ الهلع SOS</span>
+          <button onClick={() => navigateTo('panic')} aria-label="طوارئ الهلع، افتح التنفس والدعم" className="sos-action bg-terracotta-500 hover:bg-terracotta-600 text-white px-5 py-2.5 rounded-full text-xs font-bold shadow-soft flex items-center gap-2 transition-all hover:scale-105">
+            <span className="hidden md:block w-2 h-2 rounded-full bg-white animate-ping"/>
+            <i className="hidden md:inline-block fa-solid fa-wind text-xs" aria-hidden="true"></i>
+            <Siren className="md:hidden" size={17} aria-hidden="true" />
+            <span className="sos-label"><span className="sos-label-desktop">طوارئ الهلع SOS</span><span className="sos-label-mobile">SOS</span></span>
           </button>
         </div>
       </div>
 
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-sandLight/95 backdrop-blur-lg border-t border-moss-100 flex items-center justify-around py-3 px-2">
-        {[
-          { id: 'hero', icon: 'fa-house', label: 'الرئيسية', tone: 'text-moss-800' },
-          { id: 'cbt', icon: 'fa-diagram-project', label: 'المخطط', tone: 'text-moss-800' },
-          { id: 'panic', icon: 'fa-lungs', label: 'التنفس', tone: 'text-terracotta-600' },
-          { id: 'support', icon: 'fa-phone-volume', label: 'الدعم', tone: 'text-moss-800' },
-        ].map(item => <button key={item.id} onClick={() => navigateTo(item.id)} className={`flex flex-col items-center ${item.tone} text-[11px] font-bold`}>
-          <i className={`fa-solid ${item.icon} mb-1 text-sm`} aria-hidden="true"></i> {item.label}
-        </button>)}
-      </div>
     </header>
 
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full relative">
-      {view === 'hero' && <section className="app-view space-y-16">
-        <div className="bg-gradient-to-br from-sandLight via-sand to-moss-50 rounded-3xl p-8 sm:p-14 border border-moss-100 shadow-soft relative overflow-hidden">
-          <div className="max-w-2xl space-y-6 text-right relative z-10">
+    <nav className="mobile-bottom-nav md:hidden" aria-label="التنقل الرئيسي">
+      {[
+        { id: 'hero', icon: House, label: 'الرئيسية' },
+        { id: 'cbt', icon: Brain, label: 'الأفكار', accessibleLabel: 'مخطط الأفكار' },
+        { id: 'panic', icon: Wind, label: 'التنفس' },
+        { id: 'journal', icon: BookOpen, label: 'يومياتي' },
+        { id: 'support', icon: LifeBuoy, label: 'الدعم' },
+      ].map(item => {
+        const Icon = item.icon;
+        return <button key={item.id} type="button" onClick={() => navigateTo(item.id)} aria-label={item.accessibleLabel || item.label} aria-current={view === item.id ? 'page' : undefined} className={`mobile-nav-item ${view === item.id ? 'is-active' : ''}`}>
+          <Icon size={19} strokeWidth={2} aria-hidden="true" />
+          <span>{item.label}</span>
+        </button>;
+      })}
+    </nav>
+
+    <main className="site-main max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full relative">
+      {view === 'hero' && <section className="app-view home-view">
+        <div className="home-hero bg-gradient-to-br from-sandLight via-sand to-moss-50 rounded-3xl p-8 sm:p-14 border border-moss-100 shadow-soft relative overflow-hidden">
+          <div className="home-hero-copy max-w-2xl text-right relative z-10">
             <div className="inline-flex items-center gap-2 bg-moss-100 text-moss-900 text-xs font-bold px-4 py-1.5 rounded-full border border-moss-200">
               <i className="fa-solid fa-seedling text-moss-700" aria-hidden="true"></i>
               <span>مساحة شخصية هادئة للتفكر والاستعادة</span>
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-moss-900 leading-tight">تنَفَّس بعمق، <br/><span className="text-moss-700">وأعد ترتيب أفكارك.</span></h1>
-            <p className="text-sm sm:text-base text-moss-700 leading-relaxed font-medium">تجربة إنسانية مصممة لمساعدتك على تفكيك المشاعر المعقدة، مواجهة نوبات الهلع والقلق، واستعادة التوازن من خلال أدوات المعالجة المعرفية التفاعلية.</p>
-            <div className="flex flex-wrap items-center gap-4 pt-2">
-              <button onClick={() => navigateTo('cbt')} className="bg-moss-700 hover:bg-moss-900 text-sand font-bold px-7 py-3.5 rounded-2xl shadow-soft transition-all flex items-center gap-3 text-sm"><span>افتح مخطط الأفكار الذهني</span><i className="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
-              <button onClick={() => navigateTo('panic')} className="bg-sandLight hover:bg-white text-moss-900 border border-moss-200 font-bold px-6 py-3.5 rounded-2xl transition-all flex items-center gap-2 text-sm"><i className="fa-solid fa-lungs text-terracotta-500" aria-hidden="true"></i><span>تمرين التنفس الفوري</span></button>
+            <h1 className="home-headline text-4xl sm:text-5xl lg:text-6xl font-black text-moss-900 leading-tight"><span>تنفّس بعمق،</span><span className="text-moss-700">وأعد ترتيب أفكارك.</span></h1>
+            <p className="home-description text-sm sm:text-base text-moss-700 leading-relaxed font-medium">تجربة إنسانية مصممة لمساعدتك على تفكيك المشاعر المعقدة، مواجهة نوبات الهلع والقلق، واستعادة التوازن من خلال أدوات المعالجة المعرفية التفاعلية.</p>
+            <div className="home-actions flex flex-wrap items-center gap-4 pt-2">
+              <button onClick={() => navigateTo('cbt')} className="home-primary-action bg-moss-700 hover:bg-moss-900 text-sand font-bold px-7 py-3.5 rounded-2xl shadow-soft transition-all flex items-center gap-3 text-sm"><span>ابدأ ترتيب أفكارك</span><i className="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
+              <button onClick={() => navigateTo('panic')} className="home-secondary-action bg-sandLight hover:bg-white text-moss-900 border border-moss-200 font-bold px-6 py-3.5 rounded-2xl transition-all flex items-center gap-2 text-sm"><i className="fa-solid fa-lungs text-terracotta-500" aria-hidden="true"></i><span>جرّب تمرين التنفّس</span></button>
             </div>
           </div>
-          <div className="absolute -left-12 -bottom-12 opacity-10 pointer-events-none text-moss-900"><i className="fa-solid fa-brain text-[280px]" aria-hidden="true"></i></div>
+          <div className="home-hero-decoration absolute -left-12 -bottom-12 opacity-10 pointer-events-none text-moss-900"><i className="fa-solid fa-brain text-[280px]" aria-hidden="true"></i></div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -340,8 +350,8 @@ export default function App() {
       </section>}
 
       {view === 'cbt' && <section className="app-view space-y-8">
-        <div className="bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
-          <div className="flex items-center justify-between gap-3 border-b border-moss-100 pb-6">
+        <div className="cbt-panel bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
+          <div className="cbt-panel-heading flex items-center justify-between gap-3 border-b border-moss-100 pb-6">
             <div>
               <span className="text-xs font-bold text-moss-600 uppercase tracking-wider block mb-1">مساحة هادئة للتأمل</span>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">مساحة لفهم أفكارك</h2>
@@ -349,7 +359,7 @@ export default function App() {
             <button onClick={resetCbt} className="text-xs font-bold text-moss-700 hover:text-moss-900 bg-sand px-4 py-2 rounded-xl transition-all whitespace-nowrap"><i className="fa-solid fa-rotate-right ml-1" aria-hidden="true"></i> إعادة بدء المخطط</button>
           </div>
 
-          <div className="relative bg-sand border-2 border-dashed border-moss-200 rounded-3xl p-5 sm:p-8 lg:p-10 min-h-[420px] flex flex-col justify-center overflow-hidden">
+          <div className="cbt-canvas relative bg-sand border-2 border-dashed border-moss-200 rounded-3xl p-5 sm:p-8 lg:p-10 min-h-[420px] flex flex-col justify-center overflow-hidden">
             {cbtStage === 'input' && <div className="cbt-thought-entry w-full max-w-3xl mx-auto text-center">
               <div className="inline-block bg-moss-700 text-sand text-xs sm:text-sm font-bold px-4 py-2 rounded-full shadow-sm">الخطوة 1: التعرّف على الفكرة</div>
               <h3 className="text-xl sm:text-2xl font-bold text-moss-900">شو الفكرة اللي عم تشغل بالك اليوم؟</h3>
@@ -397,7 +407,7 @@ export default function App() {
       </section>}
 
       {view === 'panic' && <section className="app-view space-y-8">
-        <div className="bg-moss-900 text-sand rounded-3xl p-6 sm:p-12 shadow-floating relative overflow-hidden space-y-8">
+        <div className="panic-panel bg-moss-900 text-sand rounded-3xl p-6 sm:p-12 shadow-floating relative overflow-hidden space-y-8">
           <div className="flex items-center justify-between gap-3 border-b border-moss-700 pb-6 relative z-10">
             <div>
               <span className="inline-block bg-terracotta-500/20 text-terracotta-100 text-xs font-bold px-3 py-1 rounded-full mb-2">غرفة التهدئة الفورية</span>
@@ -407,7 +417,7 @@ export default function App() {
           </div>
 
           <div className="text-center py-6 space-y-8 relative z-10">
-            <div className="relative w-64 h-64 mx-auto flex items-center justify-center">
+            <div className="breathing-orbit relative w-56 h-56 sm:w-64 sm:h-64 mx-auto flex items-center justify-center">
               <div className="absolute inset-0 rounded-full border-4 border-emerald-400/40 bg-emerald-500/10 transition-transform duration-[4000ms] ease-in-out shadow-glow" style={{ transform: `scale(${ring.scale})` }}/>
               <div className="relative z-10 space-y-2">
                 <div className="text-5xl font-black text-white tabular-nums">{breathing.count}</div>
@@ -440,8 +450,10 @@ export default function App() {
         </div>
       </section>}
 
+      {view === 'journal' && <JournalPage />}
+
       {view === 'support' && <section className="app-view space-y-8">
-        <div className="bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
+        <div className="support-panel bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
           <div className="border-b border-moss-100 pb-6">
             <span className="text-xs font-bold text-terracotta-600 uppercase tracking-wider block mb-1">Crisis Direct Dial Hub</span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">معلومات الطوارئ</h2>
@@ -456,7 +468,7 @@ export default function App() {
           <p className="text-xs sm:text-sm text-moss-700 leading-relaxed">للحالات الطارئة التي تحتاج إلى تدخل عاجل، اتصل بالطوارئ على الرقم 911.</p>
 
           <div className="grid grid-cols-1 gap-6">
-            <div className="bg-terracotta-100/50 border border-terracotta-500/30 p-6 rounded-3xl space-y-4 flex flex-col justify-between">
+            <div className="support-emergency-card bg-terracotta-100/50 border border-terracotta-500/30 p-6 rounded-3xl space-y-4 flex flex-col justify-between">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="bg-terracotta-500 text-white text-[10px] font-bold px-3 py-1 rounded-full">طوارئ 24/7</span>
@@ -465,7 +477,7 @@ export default function App() {
                 <h3 className="font-bold text-moss-900 text-lg">طوارئ الدفاع المدني والإسعاف</h3>
                 <p className="text-xs text-moss-700 leading-relaxed">للحالات الحادة والتدخل الطبي العاجل المتاح على مدار الساعة.</p>
               </div>
-              <button onClick={() => confirmEmergencyCall('911')} className="w-full bg-terracotta-500 hover:bg-terracotta-600 text-white font-bold py-3.5 rounded-2xl text-sm transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-phone" aria-hidden="true"></i> الاتصال بـ 911</button>
+              <button onClick={() => confirmEmergencyCall('911')} className="support-call-button w-full bg-terracotta-500 hover:bg-terracotta-600 text-white font-bold py-3.5 rounded-2xl text-sm transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-phone" aria-hidden="true"></i> الاتصال بـ 911</button>
             </div>
           </div>
         </div>

@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,28 +7,37 @@ from fastapi.responses import JSONResponse
 
 from routers.panic import router as panic_router
 from routers.reframe import router as reframe_router
+from routers.auth import router as auth_router
+from routers.journal import router as journal_router
+from database import init_database
+from services.auth_service import allowed_origins
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_database()
+    yield
 
 
 app = FastAPI(
     title="Motanafas AI",
     description="Mental Wellness Awareness API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-    ],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=sorted(allowed_origins()),
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-CSRF-Token"],
+    allow_credentials=True,
 )
 
 app.include_router(reframe_router)
 app.include_router(panic_router)
+app.include_router(auth_router)
+app.include_router(journal_router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -51,5 +62,5 @@ def root() -> dict[str, str]:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
+async def health() -> dict[str, str]:
     return {"status": "ok", "service": "motanafas-backend"}

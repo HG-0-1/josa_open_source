@@ -9,7 +9,7 @@ from requests import Response
 from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout, Timeout
 
 from main import app
-from services.ai_service import is_arabic
+from services.ai_service import check_safety, is_arabic
 
 
 async def _run_inline(function, *args, **kwargs):
@@ -47,6 +47,15 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         self.http_response.status_code = 200
         self.http.return_value = self.http_response
         self.set_generated_analysis(self.analysis)
+
+    async def test_legacy_safety_helper_uses_only_verified_emergency_contact(self):
+        for text in ("بدي أقتل نفسي", "I want to kill myself"):
+            with self.subTest(language="Arabic" if is_arabic(text) else "English"):
+                result = check_safety(text)
+                self.assertTrue(result["triggered"])
+                self.assertIn("911", result["helpline"])
+                self.assertNotIn("110", result["helpline"])
+                self.assertNotIn("065538801", result["helpline"])
 
     def generated_analysis(self, analysis):
         data = dict(analysis)

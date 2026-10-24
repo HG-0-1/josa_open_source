@@ -51,6 +51,34 @@ not continue grounding or CBT, diagnose panic, or promise safety/improvement.
 Grounding accepts steps 1–5, optional empty answers, skipping, and stopping;
 step 5 completes the exercise. Tests mock Ollama and require no running model.
 
+## Journal privacy and deployment
+
+Journal accounts use Argon2 password hashes and database-backed, random
+12-hour sessions. The browser cookie is HttpOnly and SameSite=Lax; write
+requests also require the session CSRF token and an allowed Origin. Local
+development defaults allow only localhost frontend origins, and the cookie is
+not marked Secure for those HTTP origins. Set `MOTANAFAS_ALLOWED_ORIGINS` to a
+comma-separated list of exact frontend origins when changing the local setup.
+`MOTANAFAS_COOKIE_SECURE=true` forces the Secure cookie attribute; it is
+automatically enabled when configured origins are non-local.
+
+The default SQLite file is stored at
+`~/.local/share/motanafas/journal.sqlite3`, outside the frontend directory, with
+restricted directory and file permissions where supported. Set
+`MOTANAFAS_DATABASE_URL` to choose another database location. Do not put the
+database, backups, or exports in a public/static directory. Journal AI receives
+only aggregate mood/trigger counts after explicit consent and uses a loopback
+or private-network Ollama endpoint; journal notes are not sent.
+
+Before any public deployment, use HTTPS end to end, configure only the exact
+HTTPS frontend origins, force `MOTANAFAS_COOKIE_SECURE=true`, and provision a
+persistent private database volume with access controls and protected backups.
+The built-in failed-login limiter is in-process and is not shared across
+workers or restarts; public deployments need a shared rate limiter. Keep Ollama
+on a trusted local/private network and verify its own access and logging
+settings. This MVP does not provide email verification or password recovery,
+so those account-recovery expectations must be addressed before public launch.
+
 Run the tests without a running Ollama server (HTTP calls are mocked):
 
 ```bash

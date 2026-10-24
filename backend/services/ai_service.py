@@ -83,16 +83,16 @@ def check_safety(text: str) -> dict:
         if kw in norm_text:
             return {
                 "triggered": True,
-                "helpline": "الخط الوطني الساخن للدعم النفسي (الأردن): 110 (أو 065538801)",
-                "message": "سلامتك وحياتك هي أولويتنا المطلقة. حالتك تستدعي رعاية إنسانية متخصصة، يرجى التواصل مع فريق الدعم المتخصص فوراً وبشكل مجاني وسري."
+                "helpline": "الطوارئ في الأردن: 911",
+                "message": "سلامتك وحياتك أولوية. تواصل مع الطوارئ المحلية أو شخص تثق به فوراً."
             }
 
     for kw in CRITICAL_SAFETY_KEYWORDS_EN:
         if kw in lower_text:
             return {
                 "triggered": True,
-                "helpline": "Jordan National Mental Health Helpline: 110 (or 065538801)",
-                "message": "Your safety and life are our absolute priority. Please connect immediately with professional human support (free and confidential)."
+                "helpline": "Jordan emergency services: 911",
+                "message": "Your safety matters. Contact local emergency services or someone you trust now."
             }
 
     return {"triggered": False}
