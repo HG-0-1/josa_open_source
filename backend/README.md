@@ -29,8 +29,18 @@ process; its deployment and logging settings are managed independently.
 
 `POST /api/panic` remains deterministic and does not use Ollama.
 
+Safety and grounding tests are preliminary engineering checks, not clinically
+validated crisis detection or medical triage. Narrow rules exclude some
+explicit symptom denials and example quotations, but cannot reliably interpret
+negation, quoted speech, or intent in all contexts. A non-match is not a safety
+assessment. Independent urgent statements still override ordinary guidance.
+Emergency replies use fixed human-support or urgent medical guidance; they do
+not continue grounding or CBT, diagnose panic, or promise safety/improvement.
+Grounding accepts steps 1–5, optional empty answers, skipping, and stopping;
+step 5 completes the exercise. Tests mock Ollama and require no running model.
+
 Run the tests without a running Ollama server (HTTP calls are mocked):
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m pytest -q
 ```

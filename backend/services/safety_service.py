@@ -37,10 +37,25 @@ def _normalize(text: str) -> str:
     return " ".join(normalized.split())
 
 
+def _without_example_quotes(text: str) -> str:
+    """Exclude balanced quotes explicitly introduced as examples/quotations.
+
+    A directly quoted personal statement is still checked. This is a narrow
+    engineering heuristic, not reliable interpretation of intent or context.
+    """
+    def replace(match: re.Match) -> str:
+        context = _normalize(text[max(0, match.start() - 120):match.start()])
+        if re.search(r"\b(?:مثال|مثالا|اقتباس|قرات|example|quote|quoted)\b", context):
+            return " "
+        return next(group for group in match.groups() if group is not None)
+
+    return re.sub(r'"([^"\n]*)"|«([^»]*)»|“([^”]*)”', replace, text)
+
+
 def is_clearly_urgent(text: str) -> bool:
     # Match complete clauses to avoid treating negation, questions, or ordinary
     # negative thoughts containing similar words as explicit urgent statements.
-    clauses = re.split(r"[.!?؟،,;؛\n]+", text)
+    clauses = re.split(r"[.!?؟،,;؛\n]+", _without_example_quotes(text))
     return any(
         re.fullmatch(pattern, _normalize(clause)) is not None
         for clause in clauses
@@ -59,13 +74,24 @@ _URGENT_PHYSICAL_SYMPTOMS = (
     r"(?:can't|cannot|can’t) breathe",
 )
 
+_SYMPTOM_DENIAL = re.compile(
+    r"(?:\b(?:ما عندي|مش عندي|مو عندي|لا يوجد|ليس لدي|ليس عندي|ليس هناك)"
+    r"|\bلا (?:اعاني|اشعر)(?: من| ب)?"
+    r"|\b(?:no|without|do not have|don't have|not experiencing))\s*$"
+)
+
 
 def has_urgent_physical_symptoms(text: str) -> bool:
     """Conservatively route symptom mentions; not a diagnosis or clinical triage.
 
-    Phrase detection can miss symptoms or flag quoted/negated mentions. It must
-    never be used to conclude that symptoms are harmless or caused by panic.
+    Some example quotations and explicit symptom denials are excluded, but
+    context/negation handling is incomplete and can miss or misroute content.
+    Never use a non-match to conclude symptoms are harmless or caused by panic.
     Guidance follows https://www.nhs.uk/symptoms/shortness-of-breath/.
     """
-    normalized = _normalize(text)
-    return any(re.search(pattern, normalized) for pattern in _URGENT_PHYSICAL_SYMPTOMS)
+    normalized = _normalize(_without_example_quotes(text))
+    return any(
+        not _SYMPTOM_DENIAL.search(normalized[:match.start()])
+        for pattern in _URGENT_PHYSICAL_SYMPTOMS
+        for match in re.finditer(pattern, normalized)
+    )

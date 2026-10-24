@@ -1,11 +1,26 @@
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
+import logging
 import unittest
 from unittest.mock import patch
+from urllib.error import URLError
 
 from main import app
 
 
 class PanicTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Every grounding test runs with Ollama unavailable, without contacting it.
+        http_patch = patch(
+            "services.ai_service.urlopen", side_effect=URLError(ConnectionRefusedError())
+        )
+        self.http = http_patch.start()
+        self.addCleanup(http_patch.stop)
+
+    async def asyncTearDown(self):
+        self.http.assert_not_called()
+
     async def post(self, payload: object) -> tuple[int, dict]:
         """Call the actual ASGI endpoint without extra test dependencies."""
         messages = []
@@ -60,6 +75,10 @@ class PanicTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn(phrase, response["reply"])
                     self.assertIs(response["emergency"], False)
                     self.assertEqual(response["completed"], step == 5)
+                    self.assertEqual(set(response), {"reply", "emergency", "completed"})
+                    for claim in ("إنت بأمان", "أنت بأمان", "نبضك بدأ يهدأ",
+                                  "نوبة هلع مؤكدة", "you are safe", "pulse is slowing"):
+                        self.assertNotIn(claim, response["reply"])
             ai.assert_not_called()
 
     async def test_invalid_steps(self):
@@ -87,16 +106,20 @@ class PanicTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all("input" not in error for error in response["detail"]))
 
     async def test_danger_overrides_every_step_and_stop(self):
-        with patch("services.grounding_service.next_guidance") as grounding:
+        with patch("services.grounding_service.next_guidance") as grounding, \
+                patch("services.ai_service.reframe") as ai:
             for step in range(1, 6):
-                status, response = await self.post({
-                    "step": step, "text": "أنا ناوي أؤذي نفسي الآن", "action": "stop"
-                })
-                self.assertEqual(status, 200)
-                self.assertIs(response["emergency"], True)
-                self.assertIs(response["completed"], False)
-                self.assertIn("مساعدة بشرية", response["reply"])
+                for action in ("continue", "skip", "stop"):
+                    status, response = await self.post({
+                        "step": step, "text": "أنا ناوي أؤذي نفسي الآن", "action": action
+                    })
+                    self.assertEqual(status, 200)
+                    self.assertEqual(response, {
+                        "reply": "إذا كنت في خطر مباشر، اطلب مساعدة بشرية أو اتصل بالطوارئ.",
+                        "emergency": True, "completed": False,
+                    })
             grounding.assert_not_called()
+            ai.assert_not_called()
 
     async def test_severe_symptoms_override_exercise(self):
         symptoms = (
@@ -107,16 +130,68 @@ class PanicTests(unittest.IsolatedAsyncioTestCase):
             "I have severe chest pain", "I can't breathe",
             "I have severe difficulty breathing",
         )
-        with patch("services.grounding_service.next_guidance") as grounding:
+        with patch("services.grounding_service.next_guidance") as grounding, \
+                patch("services.ai_service.reframe") as ai:
             for index, text in enumerate(symptoms):
-                with self.subTest(case=index):
+                for step in range(1, 6):
+                    with self.subTest(case=index, step=step):
+                        status, response = await self.post({"step": step, "text": text})
+                        self.assertEqual(status, 200)
+                        self.assertEqual(response, {
+                            "reply": (
+                                "الألم الشديد بالصدر أو الصعوبة الشديدة بالتنفس يحتاجوا تقييم طبي عاجل. "
+                                "أوقف التمرين واتصل بالطوارئ المحلية أو اطلب مساعدة طبية فوراً. "
+                                "ما بنقدر نفترض إن السبب قلق."
+                            ),
+                            "emergency": True, "completed": False,
+                        })
+            grounding.assert_not_called()
+            ai.assert_not_called()
+
+    async def test_negated_and_example_quoted_statements(self):
+        statements = (
+            "أنا مش ناوي أؤذي نفسي الآن",
+            'قرأت مثالاً: «أنا حزين، أنا ناوي أؤذي نفسي الآن.»',
+            "ما عندي ألم شديد في الصدر", "لا أعاني من صعوبة شديدة في التنفس",
+            'قرأت عن «ألم شديد في الصدر»',
+            'An example says "I cannot breathe".',
+        )
+        for index, text in enumerate(statements):
+            with self.subTest(case=index):
+                status, response = await self.post({"step": 1, "text": text})
+                self.assertEqual(status, 200)
+                self.assertIs(response["emergency"], False)
+                self.assertIn("أربعة أشياء", response["reply"])
+
+    async def test_sensitive_input_is_not_echoed_or_logged(self):
+        statements = (
+            "هذه فكرة شخصية خاصة للاختبار",
+            "أنا ناوي أؤذي نفسي الآن", "عندي ألم شديد في الصدر",
+        )
+        logs, stdout, stderr = StringIO(), StringIO(), StringIO()
+        handler = logging.StreamHandler(logs)
+        logger = logging.getLogger()
+        original_level = logger.level
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(handler)
+        try:
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                for text in statements:
                     status, response = await self.post({"step": 1, "text": text})
                     self.assertEqual(status, 200)
-                    self.assertIs(response["emergency"], True)
-                    self.assertIs(response["completed"], False)
-                    self.assertIn("تقييم طبي عاجل", response["reply"])
-                    self.assertIn("الطوارئ المحلية", response["reply"])
-            grounding.assert_not_called()
+                    self.assertNotIn(text, json.dumps(response, ensure_ascii=False))
+                with patch("services.safety_service.is_clearly_urgent",
+                           side_effect=RuntimeError(statements[0])):
+                    status, response = await self.post({"step": 1, "text": statements[0]})
+                    self.assertEqual(status, 500)
+                    self.assertNotIn(statements[0], json.dumps(response, ensure_ascii=False))
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(original_level)
+        observed = logs.getvalue() + stdout.getvalue() + stderr.getvalue()
+        for text in statements:
+            self.assertNotIn(text, observed)
+            self.assertNotIn(json.dumps(text)[1:-1], observed)
 
     async def test_ordinary_distress(self):
         status, response = await self.post({"step": 2, "text": "حاسس إني فاشل وزعلان"})

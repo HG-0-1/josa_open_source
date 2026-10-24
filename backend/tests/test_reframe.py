@@ -1,4 +1,7 @@
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
+import logging
 import os
 import unittest
 from unittest.mock import patch
@@ -119,37 +122,84 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["model"], "llama3.2:3b")
         self.assertIn("values in English", payload["system"])
 
-    async def test_unavailable_or_timeout_returns_503(self):
-        private_text = "هذه فكرة خاصة للاختبار"
-        errors = (
-            TimeoutError(private_text), URLError(private_text),
-            ConnectionRefusedError(private_text),
-            HTTPError("http://localhost", 500, private_text, {}, None),
-        )
+    async def assert_private_unavailable_response(self):
+        private_text = "هذه فكرة حساسة خاصة للاختبار"
+        logs, stdout, stderr = StringIO(), StringIO(), StringIO()
+        handler = logging.StreamHandler(logs)
+        logger = logging.getLogger()
+        original_level = logger.level
+        logger.setLevel(logging.DEBUG)
+        logger.addHandler(handler)
+        self.http.reset_mock()
+        try:
+            with redirect_stdout(stdout), redirect_stderr(stderr), patch(
+                "services.ai_service._mock_reframe"
+            ) as mock_fallback:
+                status, response = await self.post({"text": private_text})
+                mock_fallback.assert_not_called()
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(original_level)
+        self.http.assert_called_once()
+        self.assertEqual(status, 503)
+        # Exact shape excludes all CBT fields, emergency guidance, and traces.
+        self.assertEqual(response, {
+            "detail": "خدمة المساعدة الآلية غير متاحة حالياً. يرجى المحاولة لاحقاً."
+        })
+        observed = json.dumps(response, ensure_ascii=False) + logs.getvalue()
+        observed += stdout.getvalue() + stderr.getvalue()
+        self.assertNotIn(private_text, observed)
+        self.assertNotIn(json.dumps(private_text)[1:-1], observed)
+
+    async def test_connection_refused_returns_private_503(self):
+        private_text = "هذه فكرة حساسة خاصة للاختبار"
+        for error in (ConnectionRefusedError(private_text),
+                      URLError(ConnectionRefusedError(private_text))):
+            with self.subTest(error_type=type(error).__name__):
+                self.http.side_effect = error
+                await self.assert_private_unavailable_response()
+
+    async def test_timeout_returns_private_503(self):
+        private_text = "هذه فكرة حساسة خاصة للاختبار"
+        for error in (TimeoutError(private_text), URLError(TimeoutError(private_text))):
+            with self.subTest(error_type=type(error).__name__):
+                self.http.side_effect = error
+                await self.assert_private_unavailable_response()
+        self.http.side_effect = None
+        self.http_response.read.side_effect = TimeoutError(private_text)
+        await self.assert_private_unavailable_response()
+
+    async def test_http_error_returns_private_503(self):
+        private_text = "هذه فكرة حساسة خاصة للاختبار"
+        errors = (URLError(private_text),
+                  HTTPError("http://localhost", 500, private_text, {}, None))
         for error in errors:
             with self.subTest(error_type=type(error).__name__):
                 self.http.side_effect = error
-                status, response = await self.post({"text": private_text})
-                self.assertEqual(status, 503)
-                self.assertEqual(response, {
-                    "detail": "خدمة المساعدة الآلية غير متاحة حالياً. يرجى المحاولة لاحقاً."
-                })
-                self.assertNotIn(private_text, json.dumps(response, ensure_ascii=False))
+                await self.assert_private_unavailable_response()
+
+    async def test_empty_ai_response_returns_private_503(self):
+        for index, body in enumerate((b"", b'{"response": ""}',
+                                      b'{"response": "   "}', b'{"response": null}')):
+            with self.subTest(case=index):
+                self.http_response.read.return_value = body
+                await self.assert_private_unavailable_response()
 
     async def test_invalid_ollama_json_returns_503(self):
+        private_text = "هذه فكرة حساسة خاصة للاختبار"
         invalid_bodies = (
             b"not json", b"[]", b"{}", b'{"response": null}',
             b'{"response": "not json"}',
             json.dumps({"response": "{}"}).encode(),
             json.dumps({"response": "[]"}).encode(),
+            private_text.encode(),
+            json.dumps({"response": private_text}, ensure_ascii=False).encode(),
             b"x" * 65537,
         )
         for index, body in enumerate(invalid_bodies):
             with self.subTest(case=index):
                 self.http_response.read.return_value = body
-                status, response = await self.post({"text": "حاسس إني فاشل"})
-                self.assertEqual(status, 503)
-                self.assertNotIn("distortion", response)
+                await self.assert_private_unavailable_response()
 
     async def test_invalid_analysis_schema_returns_503(self):
         for field in self.analysis:
@@ -255,6 +305,8 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
             "أنا لن أؤذي نفسي الآن",
             "أنا ناوي ما أؤذي نفسي",
             "هل أنا ناوي أؤذي نفسي الآن؟",
+            'قرأت مثالاً: «أنا حزين، أنا ناوي أؤذي نفسي الآن.»',
+            'An example says: "I feel sad. I will kill myself now."',
             "كنت ناوي أؤذي نفسي زمان لكن الآن لا أريد ذلك",
             "أنا حزين ومقهور من الشغل",
             "حاسس إني فاشل لأن مقابلة العمل ما زبطت",
