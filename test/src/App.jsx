@@ -12,6 +12,67 @@ const thoughts = [
   { label: 'خوف وفقدان السيطرة', text: 'خائف جداً من فقدان السيطرة والقلق يتزايد بشكل لا أستطيعه' },
 ];
 
+const distortionPresentations = {
+  'التهويل وتوقع الأسوأ': {
+    summary: 'ممكن تكون عم تتوقع الأسوأ',
+    support: 'أحياناً لما نقلق، بنميل نتوقع أسوأ الاحتمالات. خلينا نشوف إذا في طريقة ثانية نفهم فيها الموقف.',
+  },
+  Catastrophizing: {
+    summary: 'ممكن تكون عم تتوقع الأسوأ',
+    support: 'أحياناً لما نقلق، بنميل نتوقع أسوأ الاحتمالات. خلينا نشوف إذا في طريقة ثانية نفهم فيها الموقف.',
+  },
+  'التعميم الزائد': {
+    summary: 'ممكن تكون عم تعمم من تجربة واحدة',
+    support: 'أحياناً تجربة صعبة بتخلينا نعمم على مواقف ثانية. خلينا نشوف شو منعرف عن هالموقف لحاله.',
+  },
+  Overgeneralization: {
+    summary: 'ممكن تكون عم تعمم من تجربة واحدة',
+    support: 'أحياناً تجربة صعبة بتخلينا نعمم على مواقف ثانية. خلينا نشوف شو منعرف عن هالموقف لحاله.',
+  },
+  'وسم الذات ولوم النفس': {
+    summary: 'ممكن تكون عم تحكم على حالك بقسوة',
+    support: 'أحياناً موقف واحد ما بيختصرنا. خلينا نفصل بين اللي صار وبين حكمنا على حالنا.',
+  },
+  'Labeling & Self-Blame': {
+    summary: 'ممكن تكون عم تحكم على حالك بقسوة',
+    support: 'أحياناً موقف واحد ما بيختصرنا. خلينا نفصل بين اللي صار وبين حكمنا على حالنا.',
+  },
+  'التفكير الثنائي (كل شيء أو لا شيء)': {
+    summary: 'ممكن تكون شايف الموقف يا كلّه يا ولا شي',
+    support: 'أحياناً القلق بيخلينا نشوف الأمور كأنها خيارين بس. خلينا نشوف إذا في احتمالات بالنص.',
+  },
+  'All-or-Nothing Thinking': {
+    summary: 'ممكن تكون شايف الموقف يا كلّه يا ولا شي',
+    support: 'أحياناً القلق بيخلينا نشوف الأمور كأنها خيارين بس. خلينا نشوف إذا في احتمالات بالنص.',
+  },
+  'قراءة الأفكار والقفز للاستنتاجات': {
+    summary: 'ممكن تكون عم تتوقع شو بفكروا غيرك',
+    support: 'لما ما نعرف شو بفكر فيه غيرنا، منقدر نفرّق بين اللي منعرفه واللي عم نتوقعه.',
+  },
+  'Mind Reading / Jumping to Conclusions': {
+    summary: 'ممكن تكون عم تتوقع شو بفكروا غيرك',
+    support: 'لما ما نعرف شو بفكر فيه غيرنا، منقدر نفرّق بين اللي منعرفه واللي عم نتوقعه.',
+  },
+  'تفكير واقعي متزن': {
+    summary: 'ما ظهر نمط واضح، وهذا طبيعي',
+    support: 'مش كل فكرة لازم يكون فيها نمط غير متوازن. فينا نكمل نفهمها بهدوء.',
+  },
+  'Realistic & Balanced Thinking': {
+    summary: 'ما ظهر نمط واضح، وهذا طبيعي',
+    support: 'مش كل فكرة لازم يكون فيها نمط غير متوازن. فينا نكمل نفهمها بهدوء.',
+  },
+};
+
+function getDistortionPresentation(distortion) {
+  const label = typeof distortion === 'string'
+    ? distortion.replace(/^(نمط تفكير محتمل:|Possible thinking pattern:)\s*/, '').trim()
+    : '';
+  return distortionPresentations[label] || {
+    summary: 'خلينا نتأمل الفكرة سوا',
+    support: 'مش ضروري يكون بكل فكرة نمط واضح. فينا نراجعها بهدوء ونشوف شو منعرف.',
+  };
+}
+
 const groundingTexts = {
   5: 'انظر حولك واسمح لعينيك بتحديد 5 أشياء واضحة في الغرفة وركز في ألوانها وملمسها البصري.',
   4: 'لاحظ 4 أشياء يمكنك لمسها حولك الآن (ملابسك، السطح الخشبي، أو يديك).',
@@ -193,6 +254,9 @@ export default function App() {
   }
 
   const ring = breathPhases[breathing.phase];
+  const distortionPresentation = cbtResult
+    ? getDistortionPresentation(cbtResult.distortion)
+    : null;
 
   return <div className="min-h-screen flex flex-col justify-between selection:bg-moss-200 selection:text-moss-900 pb-24 md:pb-0">
     <header className="sticky top-0 z-40 bg-sand/90 backdrop-blur-md border-b border-moss-100/80 transition-all">
@@ -279,43 +343,46 @@ export default function App() {
         <div className="bg-sandLight rounded-3xl p-6 sm:p-10 border border-moss-100 shadow-soft space-y-8">
           <div className="flex items-center justify-between gap-3 border-b border-moss-100 pb-6">
             <div>
-              <span className="text-xs font-bold text-moss-600 uppercase tracking-wider block mb-1">CBT Mind Mapping</span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">مُخطط الأفكار المعرفي التفاعلي</h2>
+              <span className="text-xs font-bold text-moss-600 uppercase tracking-wider block mb-1">مساحة هادئة للتأمل</span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-moss-900">مساحة لفهم أفكارك</h2>
             </div>
             <button onClick={resetCbt} className="text-xs font-bold text-moss-700 hover:text-moss-900 bg-sand px-4 py-2 rounded-xl transition-all whitespace-nowrap"><i className="fa-solid fa-rotate-right ml-1" aria-hidden="true"></i> إعادة بدء المخطط</button>
           </div>
 
-          <div className="relative bg-sand border-2 border-dashed border-moss-200 rounded-3xl p-6 sm:p-10 min-h-[420px] flex flex-col justify-between overflow-hidden">
-            {cbtStage === 'input' && <div className="space-y-4 max-w-xl mx-auto text-center">
-              <div className="inline-block bg-moss-700 text-sand text-xs font-bold px-3 py-1 rounded-full">الخطوة 1: الفكرة التلقائية المزعجة</div>
-              <h3 className="text-lg font-bold text-moss-900">ما هي الفكرة التي تضغط عليك حالياً؟</h3>
-              <div className="relative">
-                <textarea value={thought} onChange={event => setThought(event.target.value)} rows="3" placeholder="اكتب فكرتك هنا (مثال: أشعر أنني سأفشل في المقابلة القادمة ولن أجد فرصة عمل...)" className="w-full bg-sandLight border-2 border-moss-200 rounded-2xl p-4 text-sm text-moss-900 focus:outline-none focus:border-moss-700 transition-all resize-none shadow-sm"/>
+          <div className="relative bg-sand border-2 border-dashed border-moss-200 rounded-3xl p-5 sm:p-8 lg:p-10 min-h-[420px] flex flex-col justify-center overflow-hidden">
+            {cbtStage === 'input' && <div className="cbt-thought-entry w-full max-w-3xl mx-auto text-center">
+              <div className="inline-block bg-moss-700 text-sand text-xs sm:text-sm font-bold px-4 py-2 rounded-full shadow-sm">الخطوة 1: التعرّف على الفكرة</div>
+              <h3 className="text-xl sm:text-2xl font-bold text-moss-900">شو الفكرة اللي عم تشغل بالك اليوم؟</h3>
+              <div className="cbt-thought-field mx-auto">
+                <label htmlFor="thought-input" className="sr-only">اكتب الفكرة اللي بتشغل بالك</label>
+                <textarea id="thought-input" dir="rtl" value={thought} onChange={event => setThought(event.target.value)} placeholder="اكتب الفكرة اللي بتشغل بالك... مثلاً: خايفة ما أنجح بالامتحان رغم إني بحاول أستعد إله." className="cbt-thought-textarea w-full bg-sandLight border-2 border-moss-200 rounded-2xl p-5 sm:p-6 text-base leading-8 text-moss-900 placeholder:text-moss-600 shadow-sm transition-all focus-visible:outline-none focus-visible:border-moss-700 focus-visible:ring-4 focus-visible:ring-moss-200" />
               </div>
-              <div className="flex flex-wrap justify-center gap-2 pt-2">
-                {thoughts.map(preset => <button key={preset.label} onClick={() => setThought(preset.text)} className="text-[11px] font-bold bg-sandLight border border-moss-200 text-moss-800 px-3 py-1.5 rounded-full hover:bg-moss-100 transition-all">{preset.label}</button>)}
+              <div className="cbt-example-list flex flex-wrap justify-center">
+                {thoughts.map(preset => <button key={preset.label} type="button" aria-pressed={thought === preset.text} onClick={() => setThought(preset.text)} className={`cbt-example-chip rounded-full text-sm font-bold transition-all ${thought === preset.text ? 'cbt-example-chip-selected' : ''}`}>{preset.label}</button>)}
               </div>
-              <button onClick={analyzeThought} disabled={!thought.trim() || cbtLoading} className="bg-moss-700 hover:bg-moss-900 disabled:opacity-50 disabled:cursor-not-allowed text-sand font-bold px-8 py-3.5 rounded-2xl shadow-soft text-sm transition-all">
-                {cbtLoading ? <><i className="fa-solid fa-circle-notch fa-spin ml-2" aria-hidden="true"></i> نحلل الفكرة…</> : <>تحليل واستخراج التشوه المعرفي <i className="fa-solid fa-arrow-left mr-2" aria-hidden="true"></i></>}
+              <button onClick={analyzeThought} disabled={!thought.trim() || cbtLoading} aria-busy={cbtLoading} className="cbt-submit inline-flex items-center justify-center gap-3 rounded-2xl text-base font-bold text-sand shadow-soft transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-moss-300 disabled:cursor-not-allowed disabled:shadow-none">
+                {cbtLoading && <i className="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>}
+                <span>ساعدني أشوف الفكرة من زاوية ثانية</span>
+                {!cbtLoading && <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>}
               </button>
             </div>}
 
-            {cbtStage === 'distortion' && cbtResult && <div className="space-y-6 max-w-2xl mx-auto text-right">
+            {cbtStage === 'distortion' && cbtResult && <div className="cbt-flow-step mx-auto text-right">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-terracotta-500 text-white flex items-center justify-center text-xs font-bold">2</div>
-                <h4 className="font-bold text-moss-900 text-base">التشوه المعرفي المكتشف في فكرتك:</h4>
+                <div className="w-9 h-9 rounded-full bg-moss-700 text-white flex items-center justify-center text-sm font-bold">2</div>
+                <h4 className="text-lg sm:text-xl font-bold text-moss-900">خلينا نفهم طريقة تفكيرك</h4>
               </div>
-              <div className="bg-terracotta-100/60 border border-terracotta-500/30 p-5 rounded-2xl space-y-2">
-                <h5 className="font-bold text-terracotta-600 text-sm">{cbtResult.distortion}</h5>
-                <p className="text-xs text-moss-800 leading-relaxed">{cbtResult.explanation || 'يمكننا فحص الفكرة بهدوء ومن دون أحكام.'}</p>
+              <div className="bg-moss-50 border border-moss-200 p-5 sm:p-6 rounded-2xl space-y-3">
+                <h5 className="font-bold text-moss-700 text-base">{distortionPresentation.summary}</h5>
+                <p className="text-sm text-moss-800 leading-7">{distortionPresentation.support}</p>
               </div>
-              <button onClick={buildAlternative} className="w-full bg-moss-700 hover:bg-moss-900 text-sand font-bold py-3.5 rounded-2xl shadow-soft text-sm transition-all text-center">بناء المنظور البديل المتوازن <i className="fa-solid fa-wand-magic-sparkles mr-2" aria-hidden="true"></i></button>
+              <button onClick={buildAlternative} className="w-full bg-moss-700 hover:bg-moss-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-moss-300 text-sand font-bold py-4 rounded-2xl shadow-soft text-base transition-all text-center">خلينا نشوف الفكرة من زاوية ثانية <i className="fa-solid fa-arrow-left mr-2" aria-hidden="true"></i></button>
             </div>}
 
-            {cbtStage === 'result' && cbtResult && <div className="space-y-6 max-w-2xl mx-auto text-right">
+            {cbtStage === 'result' && cbtResult && <div className="cbt-flow-step mx-auto text-right">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-moss-700 text-white flex items-center justify-center text-xs font-bold">3</div>
-                <h4 className="font-bold text-moss-900 text-base">الصياغة البديلة والمتوازنة:</h4>
+                <div className="w-9 h-9 rounded-full bg-moss-700 text-white flex items-center justify-center text-sm font-bold">3</div>
+                <h4 className="text-lg sm:text-xl font-bold text-moss-900">فكرة أكثر توازناً</h4>
               </div>
               <div className="bg-moss-50 border border-moss-200 p-6 rounded-2xl space-y-3">
                 <p className="text-sm font-semibold text-moss-900 leading-relaxed">{cbtResult.reframed_thought}</p>

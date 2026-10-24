@@ -52,6 +52,96 @@ body {
   animation: viewIn 0.4s ease both;
 }
 
+.cbt-thought-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.cbt-flow-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: min(100%, 680px);
+}
+
+.cbt-thought-field {
+  width: min(100%, 680px);
+}
+
+.cbt-thought-textarea {
+  min-height: 168px;
+  resize: vertical;
+}
+
+.cbt-example-list {
+  width: min(100%, 680px);
+  gap: 0.75rem;
+}
+
+.cbt-example-chip {
+  min-height: 44px;
+  padding: 0.7rem 1rem;
+  color: #1B4332;
+  background: #FAF8EE;
+  border: 1px solid #C2D7C9;
+}
+
+.cbt-example-chip:hover {
+  background: #E1EBE4;
+  border-color: #3D6B58;
+  transform: translateY(-1px);
+}
+
+.cbt-example-chip-selected {
+  background: #E1EBE4;
+  border-color: #2D6A4F;
+  box-shadow: inset 0 0 0 1px #2D6A4F;
+}
+
+.cbt-example-chip:focus-visible,
+.cbt-submit:focus-visible {
+  outline: 3px solid #52796F;
+  outline-offset: 3px;
+}
+
+.cbt-submit {
+  width: min(100%, 440px);
+  min-height: 58px;
+  padding: 0.9rem 1.5rem;
+  background: #2D6A4F;
+}
+
+.cbt-submit:not(:disabled):hover {
+  background: #1B4332;
+  transform: translateY(-1px);
+}
+
+.cbt-submit:disabled {
+  color: #1B4332;
+  background: #A8C3B2;
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .cbt-thought-textarea {
+    min-height: 150px;
+  }
+
+  .cbt-example-list {
+    gap: 0.625rem;
+  }
+
+  .cbt-example-chip {
+    padding-inline: 0.875rem;
+  }
+
+  .cbt-submit {
+    width: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
