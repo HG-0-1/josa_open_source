@@ -66,6 +66,15 @@ def clean_json_response(raw_response: str) -> str:
     cleaned = re.sub(r'^```\s*', '', cleaned, flags=re.MULTILINE)
     return cleaned.rstrip('`').strip()
 
+
+def _validate_output_language(data: OllamaAnalysis, arabic: bool) -> None:
+    """Reject obvious cross-language leakage without rewriting model analysis."""
+    texts = (data.reality_check, data.reframed_thought)
+    if arabic and any(re.search(r'[A-Za-z]', value) for value in texts):
+        raise ValueError("Unexpected English text in Arabic response")
+    if not arabic and any(re.search(r'[\u0600-\u06FF]', value) for value in texts):
+        raise ValueError("Unexpected Arabic text in English response")
+
 def check_safety(text: str) -> dict:
     norm_text = normalize_arabic(text)
     lower_text = text.lower()
@@ -105,8 +114,9 @@ def reframe_thought(thought_text: str) -> dict:
         + ". Keep distortion_key in English exactly as listed. "
         "Use Balanced when no clear unhelpful pattern is supported; distress alone is not a distortion. "
         f"Write the reality_check and reframed_thought values in {language}, "
-        "using natural, warm language and at most 25 words each. "
-        "In reality_check, gently distinguish known facts from assumptions; "
+        "using fluent, natural, warm language and at most 25 words each. "
+        + ("Use Arabic only: no English words or Latin letters. Match the user's dialect and preserve clearly expressed grammatical gender throughout, including first-person agreement. Preserve the user's exact meaning, subject, and tense; never add past actions, achievements, or facts. Use simple, natural Arabic. In reality_check, separate stated facts from possible interpretations. Keep reframed_thought short, coherent, and in first person. Style example only (vary wording): thought: أنا خايفة من امتحان بكرا وبفكر إني مستحيل أنجح؛ reality_check: أنا خائفة من الامتحان، لكن توقعي للفشل ليس نتيجة مؤكدة؛ reframed_thought: أنا خائفة، ويمكنني الاستعداد بما أستطيع من دون افتراض النتيجة. " if arabic else "Use English only. ")
+        + "In reality_check, gently distinguish known facts from assumptions; "
         "acknowledge uncertainty and avoid dismissing feelings or asserting others' intentions. "
         "In reframed_thought, use first person, preserve the situation, and suggest a realistic "
         "perspective or small action without forced optimism. "
@@ -137,6 +147,7 @@ def reframe_thought(thought_text: str) -> dict:
             raise ValueError("Oversized response")
         envelope = OllamaGenerateResponse.model_validate(res.json())
         data = OllamaAnalysis.model_validate_json(clean_json_response(envelope.response))
+        _validate_output_language(data, arabic)
         lang_code = "ar" if arabic else "en"
         return {
             "emergency": False,
