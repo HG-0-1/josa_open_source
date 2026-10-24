@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, Eraser, Headphones, Mic, Pause, Play, Scale, ShieldAlert, ShieldCheck, Siren, Sparkles, Volume2, X, Phone } from 'lucide-react';
+import { ArrowLeft, BellRing, Eraser, Headphones, Mic, Pause, Play, Scale, ShieldAlert, ShieldCheck, Siren, Sparkles, Volume2, X, Phone, Watch } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import LandingPage from './LandingPage.jsx';
 
 const ROUTE_TABS = { '/cbt': 'cbt', '/panic': 'sos', '/support': 'support' };
 const TAB_ROUTES = { cbt: '/cbt', sos: '/panic', support: '/support' };
+const SAFETY_PATTERN = /(انتحار|أنتحر|بدي\s+أنتحر|بدي\s+أموت|ما\s+بدي\s+أعيش|انهي\s+حياتي|إنهاء\s+حياتي|إيذاء\s+(النفس|نفسي)|أؤذي\s+نفسي|أجرح\s+نفسي|أقتل\s+نفسي|أفكر\s+ب(إيذاء|قتل)\s+نفسي|مش\s+آمن|مو\s+آمن|غير\s+آمن|خطر\s+مباشر)/i;
+
+function readSmartwatchPreference() {
+  try { return window.localStorage.getItem('motanafas-smartwatch-feedback') === 'enabled'; }
+  catch { return false; }
+}
 
 const demos = [
-  { icon: '💻', title: 'سيناريو إحباط البرمجة', text: 'حاسس حالي غبي وما رح أفهم البرمجة بحياتي لأن الكود ما اشتغل اليوم' },
+  { icon: '💻', title: 'سيناريو إحباط البرمجة', text: 'الكود طلع فيه مشكلة، أنا غبي وما بنفع أكون مبرمج' },
   { icon: '💼', title: 'سيناريو رفض المقابلة', text: 'أنا فاشل، رسبت بمقابلة العمل ومستحيل ألاقي وظيفة بحياتي' },
   { icon: '🛡️', title: 'سيناريو صمام الأمان الطارئ', emergency: true, text: 'أفكر بإيذاء نفسي ولا أشعر أنني بأمان الآن' },
 ];
@@ -17,34 +23,41 @@ const senses = [
   { icon: '👂', n: 3, title: 'أصوات تسمعها' }, { icon: '🌿', n: 2, title: 'رائحة تشمها' },
   { icon: '💧', n: 1, title: 'شيء يمنحك أمانًا' },
 ];
-const mockResults = [
-  { distortion: 'التفكير الكارثي', explanation: 'تحويل تعثر واحد إلى توقّع أن كل شيء سيفشل.', reality_check: 'تعطّل الكود اليوم موقف مؤقت، ولا يثبت أنك غير قادر على التعلّم. الأخطاء جزء طبيعي من البرمجة.', reframed_thought: 'واجهتني عقبة اليوم، لكنها لا تحدد قدرتي. أستطيع أن أتعلم من الخطأ وأجرب خطوة صغيرة جديدة.' },
-  { distortion: 'وسم الذات والتعميم', explanation: 'حكم واسع على نفسك انطلاقًا من تجربة واحدة.', reality_check: 'نتيجة مقابلة واحدة لا تختصر مهاراتك ولا تحدد فرصك القادمة. كل مقابلة تجربة مختلفة.', reframed_thought: 'لم تكن هذه المقابلة كما تمنيت، لكن ذلك لا يجعلني فاشلًا. أستطيع التعلّم والاستعداد للفرصة التالية.' },
-];
+const API_ROOT = '/api';
 
-async function fetchReframeAPI(text) {
+async function requestApi(path, body) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30000);
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/reframe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-    if (!response.ok) throw new Error('Local API unavailable');
-    return await response.json();
-  } catch {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    if (/إيذاء|انتحار|أقتل|مش آمن|غير آمن/.test(text)) return { emergency: true, message: 'سلامتك الآن هي الأولوية. إذا كنت في خطر مباشر، اتصل بالطوارئ أو اطلب من شخص تثق به أن يبقى معك.' };
-    return mockResults[/مقابلة|وظيف|فاشل/.test(text) ? 1 : 0];
+    const response = await fetch(`${API_ROOT}/${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detail = data?.detail || data?.message || data?.error;
+      const validationMessage = Array.isArray(detail)
+        ? detail.map(issue => {
+            const field = Array.isArray(issue.loc) ? issue.loc.slice(1).join('.') : '';
+            return `${field ? `${field}: ` : ''}${issue.msg || 'قيمة غير صالحة'}`;
+          }).join('، ')
+        : typeof detail === 'string' ? detail : null;
+      throw new Error(validationMessage || `تعذّر تنفيذ الطلب (${response.status}).`);
+    }
+    if (!data || typeof data !== 'object') throw new Error('وصل رد غير صالح من الخادم.');
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. حاول مرة أخرى.');
+    if (error instanceof TypeError) throw new Error('تعذّر الاتصال بالخادم. تأكد من تشغيل FastAPI على المنفذ 8000 ثم أعد المحاولة.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
-async function fetchPanicAPI(step, text) {
-  try {
-    const response = await fetch('http://127.0.0.1:8000/api/panic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step, text }) });
-    if (!response.ok) throw new Error('Local API unavailable');
-    return await response.json();
-  } catch {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    const sense = senses[Math.min(step, senses.length - 1)];
-    return { reply: `أحسنت. خذ وقتك، والآن لاحظ ${sense.n} ${sense.title} بهدوء.` };
-  }
-}
+export const checkApiHealth = () => requestApi('health');
 
 function App() {
   const location = useLocation();
@@ -60,7 +73,11 @@ function App() {
   const [groundingStep, setGroundingStep] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isPanicRecording, setIsPanicRecording] = useState(false);
+  const [isPanicLoading, setIsPanicLoading] = useState(false);
+  const [panicCompleted, setPanicCompleted] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [smartwatchEnabled, setSmartwatchEnabled] = useState(readSmartwatchPreference);
+  const [notificationPermission, setNotificationPermission] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'));
   const [voiceReply, setVoiceReply] = useState('أنا معك، إنت بأمان. خذ نفس عميق مع الدائرة. شو الأشياء اللي شايفها حوليك؟');
   const [toast, setToast] = useState('');
   const speech = useRef(null);
@@ -105,14 +122,84 @@ function App() {
     window.setTimeout(() => setToast(''), 3000);
   }
 
+  async function toggleSmartwatchFeedback() {
+    if (smartwatchEnabled) {
+      setSmartwatchEnabled(false);
+      try { window.localStorage.removeItem('motanafas-smartwatch-feedback'); } catch { /* storage may be unavailable */ }
+      navigator.vibrate?.(0);
+      notify('تم إيقاف اهتزازات وإشعارات الجلسة.');
+      return;
+    }
+
+    let permission = notificationPermission;
+    if ('Notification' in window && permission === 'default') {
+      try { permission = await Notification.requestPermission(); }
+      catch { permission = Notification.permission; }
+      setNotificationPermission(permission);
+    }
+    const vibrationAvailable = typeof navigator.vibrate === 'function';
+    if (permission !== 'granted' && !vibrationAvailable) {
+      notify('هذا المتصفح لا يدعم الإشعارات أو الاهتزاز.');
+      return;
+    }
+    setSmartwatchEnabled(true);
+    try { window.localStorage.setItem('motanafas-smartwatch-feedback', 'enabled'); } catch { /* preference lasts for this page session */ }
+    notify(permission === 'granted' ? 'تم التفعيل. قد يعرض هاتفك الإشعارات على الساعة المقترنة.' : 'تم تفعيل الاهتزاز على هذا الجهاز.');
+  }
+
+  function sendToSmartwatch(title, message, isEmergency = false) {
+    if (!smartwatchEnabled) return;
+    const pattern = isEmergency ? [500, 200, 500, 200, 1000] : [200, 100, 200];
+    try { navigator.vibrate?.(pattern); } catch { /* device/browser does not allow vibration */ }
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      const notification = new Notification(title, {
+        body: message,
+        tag: 'motanafas-alert',
+        renotify: true,
+        vibrate: pattern,
+      });
+      notification.onclick = () => window.focus();
+      window.setTimeout(() => notification.close(), 8000);
+    } catch {
+      // Some mobile browsers require service-worker notifications instead.
+    }
+  }
+
   async function reframe(text = thoughtText) {
     const cleaned = text.trim();
     if (!cleaned) return;
+    if (cleaned.length < 3) { notify('اكتب 3 أحرف على الأقل حتى نتمكن من مساعدتك.'); return; }
+    if (cleaned.length > 2000) { notify('اختصر النص إلى 2000 حرف أو أقل ثم حاول مجددًا.'); return; }
     const id = ++request.current;
     window.speechSynthesis?.cancel(); setIsSpeaking(false); setResult(null); setUiState('loading');
-    const data = await fetchReframeAPI(cleaned);
+    if (SAFETY_PATTERN.test(cleaned)) {
+      const message = 'سلامتك الآن هي الأولوية. لن نرسل هذه العبارة إلى نموذج إعادة الصياغة. تواصل مع شخص تثق به أو مع جهة مساندة الآن.';
+      setResult({ emergency: true, message });
+      setUiState('triage');
+      sendToSmartwatch('تنبيه أمان — مُتَنَفَّس', 'تواصل مع شخص تثق به أو مع جهة مساندة الآن.', true);
+      navigate(TAB_ROUTES.support);
+      return;
+    }
+    let data;
+    try {
+      data = await requestApi('reframe', { text: cleaned });
+    } catch (error) {
+      setUiState('error');
+      notify(error.message || 'تعذّر الاتصال بالخادم. حاول مرة أخرى.');
+      return;
+    }
     if (id !== request.current) return;
+    const hasStructuredResult = ['distortion', 'reality_check', 'reframed_thought']
+      .every(key => typeof data[key] === 'string' && data[key].trim());
+    if (!data.emergency && !hasStructuredResult) {
+      setUiState('idle');
+      notify(data.completed ? 'اكتملت المعالجة، لكن لم تصل تفاصيل إعادة الصياغة.' : 'لم يرجع الخادم تفاصيل إعادة الصياغة المتوقعة.');
+      return;
+    }
     setResult(data); setUiState(data.emergency ? 'triage' : 'result');
+    sendToSmartwatch(data.emergency ? 'تنبيه أمان — مُتَنَفَّس' : 'اكتملت إعادة صياغة الفكرة', data.emergency ? 'تواصل مع شخص تثق به أو مع جهة مساندة.' : 'يمكنك مراجعة الفكرة البديلة بهدوء.', Boolean(data.emergency));
+    if (data.completed) notify('اكتملت المعالجة بنجاح.');
     if (data.emergency) navigate(TAB_ROUTES.support);
   }
 
@@ -134,16 +221,49 @@ function App() {
 
   async function sendPanic(text = 'محاكاة الخطوة') {
     const step = groundingStep + 1;
-    const data = await fetchPanicAPI(step, text);
+    if (text.length > 1000) { notify('اختصر رسالتك إلى 1000 حرف أو أقل ثم حاول مجددًا.'); return; }
+    setIsPanicLoading(true);
+    const data = await requestApi('panic', { step, text }).catch(error => {
+      notify(error.message || 'تعذّر الاتصال بالخادم. حاول مرة أخرى.');
+      return null;
+    }).finally(() => setIsPanicLoading(false));
+    if (!data || (!data.reply && !data.message && !data.completed)) {
+      if (data) notify('لم يصل رد مفهوم من الخادم. حاول مرة أخرى.');
+      return;
+    }
+    if (data.emergency) {
+      setResult({ emergency: true, message: data.message || data.reply });
+      setUiState('triage');
+      sendToSmartwatch('تنبيه أمان — مُتَنَفَّس', 'تواصل مع شخص تثق به أو مع جهة مساندة الآن.', true);
+      navigate(TAB_ROUTES.support);
+      return;
+    }
+    if (data.completed && !data.reply && !data.message) {
+      setPanicCompleted(true);
+      setGroundingStep(4);
+      notify('اكتملت خطوات التهدئة. أحسنت.');
+      return;
+    }
+    if (!data.reply && data.message) {
+      setVoiceReply(data.message);
+      setGroundingStep(data.completed ? 4 : current => Math.min(current + 1, 4));
+      setPanicCompleted(Boolean(data.completed));
+      announce(data.message);
+      if (data.completed) notify('اكتملت خطوات التهدئة. أحسنت.');
+      return;
+    }
     const reply = data.reply || 'أنا معك. خذ نفسًا هادئًا.';
-    setVoiceReply(reply); setGroundingStep(current => Math.min(current + 1, 4)); announce(reply);
+    setVoiceReply(reply); setGroundingStep(data.completed ? 4 : current => Math.min(current + 1, 4)); setPanicCompleted(Boolean(data.completed)); announce(reply);
+    sendToSmartwatch(data.completed ? 'أحسنت، اكتملت خطوات التهدئة' : 'خطوة تهدئة جديدة', data.completed ? 'انتهى التمرين. خذ وقتك.' : 'خذ وقتك، خطوة واحدة في كل مرة.');
+    if (data.completed) notify('اكتملت خطوات التهدئة. أحسنت.');
   }
 
   function chooseDemo(demo) {
     setThoughtText(demo.text);
     if (demo.emergency) {
       request.current += 1;
-      setResult({ emergency: true, message: 'سلامتك الآن هي الأولوية. إذا كنت في خطر مباشر، اتصل بالطوارئ أو اطلب من شخص تثق به أن يبقى معك.' });
+      window.speechSynthesis?.cancel(); setIsSpeaking(false);
+      setResult({ emergency: true, message: 'سلامتك الآن هي الأولوية. لن نرسل هذه العبارة إلى نموذج إعادة الصياغة. تواصل مع شخص تثق به أو مع جهة مساندة الآن.' });
       setUiState('triage');
       navigate(TAB_ROUTES.support);
     } else reframe(demo.text);
@@ -161,6 +281,7 @@ function App() {
   function wipeSession() {
     request.current += 1; setThoughtText(''); setResult(null); setUiState('idle'); setGroundingStep(0);
     window.speechSynthesis?.cancel(); setIsSpeaking(false); setBreathingOn(true); setBreathingPhase(0); setSeconds(4);
+    setPanicCompleted(false);
     notify('تم تصفير الجلسة على هذا الجهاز.');
   }
 
@@ -168,6 +289,7 @@ function App() {
   const wave = <span className="wave flex h-4 items-end gap-0.5">{[1, 2, 3, 4, 5].map(n => <i key={n} className="block w-1 rounded bg-current" style={{ height: 4 + (n % 3) * 3 }} />)}</span>;
 
   return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="min-h-screen">
+    {(uiState === 'loading' || isPanicLoading) && <div role="status" className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-white px-4 py-3 text-xs font-semibold text-[#0D766F] shadow-lg"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0D9488]/25 border-t-[#0D9488]"/>جارٍ الاتصال بالخادم…</div>}
     <header className="sticky top-0 z-50 min-h-20 w-full border-b border-[#234737]/10 bg-[#FBFAF6]/90 backdrop-blur-md sm:h-20">
       <div className="mx-auto flex min-h-20 max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-2 sm:h-full sm:flex-nowrap sm:px-6 sm:py-0">
         <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-[#DDEFEA] border border-[#0D9488]/30 text-[#0D9488] font-bold text-xl flex items-center justify-center">م</div><div><span className="text-xl font-bold text-[#123B48] block leading-tight">مُتَنَفَّس</span><span className="inline-block mt-1 text-[11px] text-[#0D9488] font-medium bg-[#DDEFEA]/70 px-2.5 py-0.5 rounded-full border border-[#0D9488]/20">ذكاء اصطناعي محلي 100% آمن</span></div></div>
@@ -175,6 +297,7 @@ function App() {
       </div>
     </header>
     <main className="w-full pb-16">
+      {panicCompleted && <div role="status" className="mx-auto mt-4 w-fit rounded-full bg-[#DDEFEA] px-4 py-2 text-xs font-semibold text-[#0D766F]">اكتملت خطوات التهدئة.</div>}
       {!workspaceOpen && location.pathname !== '/' && <Navigate to="/" replace />}
       {!workspaceOpen && location.pathname === '/' && <LandingPage onOpen={openWorkspace} />}
       {false && !workspaceOpen && location.pathname === '/' && <>
@@ -192,13 +315,13 @@ function App() {
       <article className="space-y-5 rounded-2xl border border-[#123B48]/10 bg-white p-6 shadow-sm sm:p-8"><div className="mb-5"><div className="text-lg font-bold">عيادة إعادة صياغة الأفكار</div><p className="mt-1 text-sm leading-6 text-[#78908A]">اكتب أو تحدث بما يضغط عليك الآن ليقوم النموذج بتفكيكه بهدوء.</p></div>
         <div><textarea value={thoughtText} onChange={event => setThoughtText(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') reframe(); }} rows="5" placeholder="ما الفكرة التي تود النظر إليها من جديد؟" className="min-h-[120px] w-full resize-none rounded-2xl border border-[#123B48]/15 bg-[#FAF8F4] p-4 text-sm text-[#123B48] outline-none transition placeholder:text-[#9AAFA9] focus:border-[#0D9488] focus:ring-4 focus:ring-[#0D9488]/10"/></div>
         <div className="mt-4 flex flex-wrap items-center gap-2"><div className="text-xs text-[#123B48]/60">تجربة سريعة:</div><div className="flex flex-wrap items-center gap-2">{demos.map(demo => <button key={demo.title} onClick={() => chooseDemo(demo)} className="rounded-lg border border-[#123B48]/10 bg-[#FAF8F4] px-3 py-1.5 text-xs font-medium text-[#56736F] transition hover:border-[#0D9488]/30 hover:bg-[#DDEFEA]">{demo.icon} {demo.title}</button>)}</div></div>
-        <div className="flex flex-col gap-3 sm:flex-row"><button disabled={!thoughtText.trim() || uiState === 'loading'} onClick={() => reframe()} className="flex-1 rounded-xl bg-[#0D9488] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#123B48] disabled:opacity-45">{uiState === 'loading' ? 'نعيد ترتيب الفكرة…' : 'تفكيك الفكرة وإعادة بنائها'}</button><button type="button" onClick={() => isRecording ? speech.current?.stop() : startMic('cbt')} className="flex items-center justify-center gap-2 rounded-xl bg-[#DDEFEA]/70 px-5 py-3.5 text-sm font-semibold text-[#123B48] transition hover:bg-[#DDEFEA]">{isRecording ? <>{wave} جارٍ الاستماع</> : <><Mic size={16}/> تحدث بفكرتك</>}</button></div><p className="text-center text-[10px] text-[#9AAFA9]">تُرسل إلى الخدمة المحلية عند توفرها، وإلا تُستخدم استجابة تجريبية.</p>
+        <div className="flex flex-col gap-3 sm:flex-row"><button disabled={!thoughtText.trim() || uiState === 'loading'} onClick={() => reframe()} className="flex-1 rounded-xl bg-[#0D9488] px-6 py-3.5 text-sm font-bold text-white transition hover:bg-[#123B48] disabled:opacity-45">{uiState === 'loading' ? 'نعيد ترتيب الفكرة…' : 'تفكيك الفكرة وإعادة بنائها'}</button><button type="button" onClick={() => isRecording ? speech.current?.stop() : startMic('cbt')} className="flex items-center justify-center gap-2 rounded-xl bg-[#DDEFEA]/70 px-5 py-3.5 text-sm font-semibold text-[#123B48] transition hover:bg-[#DDEFEA]">{isRecording ? <>{wave} جارٍ الاستماع</> : <><Mic size={16}/> تحدث بفكرتك</>}</button></div><p className="text-center text-[10px] text-[#9AAFA9]">تُرسل الفكرة إلى الخدمة المحلية لإعادة صياغتها؛ عند تعذر الاتصال ستظهر رسالة خطأ دون إجابات تجريبية.</p>
       </article>
 
-      {uiState === 'result' && result && <AnimatePresence mode="wait"><motion.article key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4 rounded-2xl border border-[#123B48]/10 bg-white p-6 shadow-sm sm:p-8"><div className="rounded-2xl border border-[#E6B68A] bg-[#E6B68A]/20 p-4"><div className="text-xs font-bold text-[#9a704c]">التشوه المكتشف</div><div className="mt-2 font-bold text-[#123B48]">{result.distortion || 'تعميم الفكرة'}</div><p className="mt-1 text-xs leading-6 text-[#765639]">{result.explanation || 'يمكننا فحص الفكرة بهدوء ومن دون أحكام.'}</p></div><div className="rounded-2xl border border-[#123B48]/10 bg-[#FAF8F4] p-4"><div className="mb-2 text-xs font-bold text-[#123B48]">الحقيقة الموضوعية</div><p className="text-sm leading-7 text-[#56736F]">{result.reality_check || 'الفكرة تعبّر عن شعورك الآن، لكنها لا تصف كل الحقيقة أو كل ما يمكن أن يحدث.'}</p></div><div className="rounded-2xl border border-[#0D9488]/40 bg-[#DDEFEA]/70 p-5"><div className="text-xs font-bold text-[#0D766F]">الفكرة البديلة الصحية</div><p className="mt-3 text-lg font-semibold leading-8 text-[#123B48]">“{result.reframed_thought || result.message}”</p><button onClick={() => isSpeaking ? window.speechSynthesis.cancel() : announce(result.reframed_thought || result.message)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-white/80 px-4 py-2 text-xs font-semibold text-[#0D766F]">{isSpeaking ? <>{wave} إيقاف الصوت</> : <><Volume2 size={16}/> استمع بصوت هادئ</>}</button></div></motion.article></AnimatePresence>}
+      {uiState === 'result' && result && <AnimatePresence mode="wait"><motion.article key="result" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-4 rounded-2xl border border-[#123B48]/10 bg-white p-6 shadow-sm sm:p-8"><div className="rounded-2xl border border-[#E6B68A] bg-[#E6B68A]/20 p-4"><div className="text-xs font-bold text-[#9a704c]">التشوه المكتشف</div><div className="mt-2 font-bold text-[#123B48]">{result.distortion}</div>{result.explanation && <p className="mt-1 text-xs leading-6 text-[#765639]">{result.explanation}</p>}</div><div className="rounded-2xl border border-[#123B48]/10 bg-[#FAF8F4] p-4"><div className="mb-2 text-xs font-bold text-[#123B48]">الحقيقة الموضوعية</div><p className="text-sm leading-7 text-[#56736F]">{result.reality_check.trim().split(/\s+/).slice(0, 15).join(' ')}</p></div><div className="rounded-2xl border border-[#0D9488]/40 bg-[#DDEFEA]/70 p-5"><div className="text-xs font-bold text-[#0D766F]">الفكرة البديلة الصحية</div><p className="mt-3 text-lg font-semibold leading-8 text-[#123B48]">“{result.reframed_thought}”</p><button onClick={() => isSpeaking ? window.speechSynthesis.cancel() : announce(result.reframed_thought)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#0D9488]/20 bg-white/80 px-4 py-2 text-xs font-semibold text-[#0D766F]">{isSpeaking ? <>{wave} إيقاف الصوت</> : <><Volume2 size={16}/> استمع بصوت هادئ</>}</button></div></motion.article></AnimatePresence>}
     </section> : <section className="w-full space-y-6"><article className="relative flex min-h-[480px] flex-col items-center justify-center overflow-hidden rounded-[32px] bg-[#123B48] px-6 py-10 text-center text-white shadow-[0_24px_70px_rgba(18,59,72,.2)]"><div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,rgba(13,148,136,.4),transparent_52%),radial-gradient(ellipse_at_15%_85%,rgba(221,239,234,.15),transparent_35%)]"/><div className="relative mb-2 text-xs text-[#DDEFEA]/70">تنفّس على إيقاعك</div><div className="relative grid h-64 w-64 place-items-center sm:h-72 sm:w-72"><div className={`absolute inset-0 rounded-full border border-[#DDEFEA]/25 bg-[#DDEFEA]/5 ${breathingOn ? 'orb-hold' : ''}`}/><div className={`absolute inset-7 rounded-full border border-[#DDEFEA]/35 bg-[#0D9488]/10 ${breathingOn ? 'orb-inhale' : ''}`}/><div className={`absolute inset-14 rounded-full border border-[#DDEFEA]/40 bg-[#DDEFEA]/10 ${breathingOn ? 'orb-out' : ''}`}/><div className="absolute inset-[72px] grid place-items-center rounded-full bg-gradient-to-br from-[#DDEFEA]/25 to-[#0D9488]/30 shadow-[0_0_55px_rgba(13,148,136,.28)] backdrop-blur-md"><div><div className="text-5xl font-light tabular-nums">{breathingOn ? seconds : 'Ⅱ'}</div><div className="mt-2 text-sm text-[#DDEFEA]">{breathingOn ? phases[breathingPhase] : 'توقّف مؤقت'}</div></div></div><svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100" aria-label="تقدم مرحلة التنفس"><circle cx="50" cy="50" r="48" fill="none" stroke="rgba(221,239,234,.14)" strokeWidth=".8"/><circle cx="50" cy="50" r="48" fill="none" stroke="#DDEFEA" strokeWidth="1" strokeDasharray="301.6" strokeDashoffset={301.6 * (1 - (breathingOn ? progress : 0))} strokeLinecap="round" style={{ transition: 'stroke-dashoffset .8s linear' }}/></svg></div><div className="relative mt-2 text-xs text-[#DDEFEA]/65">دورة تنفّس ٤–٧–٨</div><button onClick={() => setBreathingOn(on => !on)} className="relative mt-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-2 text-xs font-semibold text-[#DDEFEA]">{breathingOn ? <><Pause size={14}/> إيقاف مؤقت</> : <><Play size={14}/> استئناف التنفّس</>}</button></article>
       <div className="flex flex-col gap-5"><article className="rounded-2xl border border-[#123B48]/10 bg-white/80 p-5 shadow-[0_14px_45px_rgba(18,59,72,.05)] sm:p-6"><div className="flex items-start justify-between"><div><div className="text-base font-bold">عد إلى حواسك</div><p className="mt-1 text-xs text-[#78908A]">لاحظ ما حولك، خطوة واحدة في كل مرة.</p></div><span className="rounded-full bg-[#DDEFEA] px-3 py-1 text-[10px] font-bold text-[#0D766F]">{groundingStep + 1} / 5</span></div><div className="mt-5 grid grid-cols-5 gap-1.5">{senses.map((sense, index) => <button key={sense.n} onClick={() => setGroundingStep(index)} className={`flex flex-col items-center gap-1 rounded-2xl border p-2 transition ${groundingStep === index ? 'border-[#0D9488]/30 bg-[#DDEFEA] text-[#0D766F]' : 'border-transparent bg-[#FAF8F4] text-[#9AAFA9] hover:border-[#123B48]/10'}`}><span className="text-lg">{sense.icon}</span><span className="text-[9px] font-bold">{sense.n} {sense.title.split(' ')[1]}</span></button>)}</div><div className="mt-4 rounded-2xl bg-[#FAF8F4] p-4"><div className="mb-2 text-[10px] font-bold text-[#0D766F]">رسالة هادئة لك</div><p className="text-sm leading-7 text-[#56736F]">{voiceReply}</p></div><div className="mt-4 flex gap-2"><button onClick={() => isPanicRecording ? panicSpeech.current?.stop() : startMic('panic')} className={`flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-bold ${isPanicRecording ? 'bg-rose-50 text-rose-700' : 'bg-[#0D9488] text-white hover:bg-[#123B48]'}`}>{isPanicRecording ? <>{wave} أستمع إليك</> : <><Mic size={16}/> تحدث للمسعف الصوتي</>}</button><button onClick={() => sendPanic('محاكاة الخطوة')} className="rounded-2xl border border-[#123B48]/10 bg-white px-4 py-3 text-xs font-bold text-[#56736F] hover:bg-[#DDEFEA]">محاكاة</button></div><button onClick={() => setGroundingStep(step => (step + 1) % 5)} className="mt-3 w-full py-2 text-xs font-semibold text-[#0D766F]">الخطوة التالية <ArrowLeft className="ms-1 inline" size={14}/></button></article><article className="rounded-2xl border border-[#123B48]/10 bg-[#DDEFEA]/65 p-5"><div className="font-bold"><Headphones className="me-1 inline" size={16}/> تذكير لطيف</div><p className="mt-2 text-sm leading-7 text-[#56736F]">إذا كان حبس النفس غير مريح، تنفّس بطريقتك الطبيعية. أوقف التمرين متى شئت.</p></article></div>
-    </section>}</div></motion.section>}
+    </section>}{(activeTab === 'cbt' || activeTab === 'sos') && <SmartwatchFeedbackControl enabled={smartwatchEnabled} permission={notificationPermission} onToggle={toggleSmartwatchFeedback}/>}</div></motion.section>}
 
     {!workspaceOpen && <footer className="mx-auto flex max-w-6xl flex-col justify-between gap-2 px-6 border-t border-[#123B48]/10 pt-5 text-[10px] leading-5 text-[#9AAFA9] sm:flex-row"><span>مُتَنَفَّس — مساحة للتأمل وإعادة التوازن.</span><span>المحتوى داعم للتأمل الذاتي ولا يغني عن المساعدة المتخصصة.</span></footer>}
     {toast && <div role="status" className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#123B48] px-5 py-3 text-xs text-white shadow-xl">{toast}</div>}
@@ -217,17 +340,28 @@ function ServiceCard({ active, onClick, icon, title, description, action, tone }
   </motion.button>;
 }
 
+function SmartwatchFeedbackControl({ enabled, permission, onToggle }) {
+  const label = enabled ? 'إيقاف الاهتزاز والإشعارات' : permission === 'denied' ? 'تفعيل الاهتزاز فقط' : 'تفعيل تنبيهات الساعة';
+  return <aside className="mx-auto mt-5 flex max-w-4xl flex-col gap-3 rounded-2xl border border-[#0D9488]/20 bg-[#DDEFEA]/45 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+    <div className="flex items-start gap-3 text-[#123B48]">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#0D9488]"><Watch size={20}/></span>
+      <div><h3 className="text-sm font-bold">تنبيهات واهتزازات مُتَنَفَّس</h3><p className="mt-1 max-w-xl text-xs leading-5 text-[#56736F]">اختياري. قد يعرض الهاتف الإشعار على ساعة مقترنة حسب إعدادات النظام؛ لا يوجد اتصال Bluetooth مباشر من صفحة الويب.</p></div>
+    </div>
+    <button type="button" aria-pressed={enabled} onClick={onToggle} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-[#0D9488]/20 bg-white px-4 py-2.5 text-xs font-bold text-[#0D766F] transition hover:bg-[#DDEFEA]">{enabled ? <BellRing size={15}/> : <Watch size={15}/>} {label}</button>
+  </aside>;
+}
+
 function SupportPanel({ emergencyMessage }) {
   return <motion.section initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="w-full rounded-2xl border border-[#123B48]/10 bg-white/90 p-5 shadow-[0_18px_55px_rgba(18,59,72,.07)] backdrop-blur-xl sm:p-8">
     <div className="flex items-start justify-between gap-4">
-      <div><div className="mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-[#DDEFEA]/70 text-[#123B48]"><ShieldCheck size={22}/></div><h2 className="text-2xl font-bold text-[#123B48]">الخطوط الوطنية للدعم والمساندة</h2><p className="mt-2 text-sm leading-6 text-[#123B48]/70">جهات رسمية معتمدة لتقديم المساندة النفسية والإرشادية المتخصصة في الأردن</p></div>
+      <div><div className="mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-[#DDEFEA]/70 text-[#123B48]"><ShieldCheck size={22}/></div><h2 className="text-2xl font-bold text-[#123B48]">الخطوط الوطنية للدعم والمساندة</h2><p className="mt-2 text-sm leading-6 text-[#123B48]/70">خطوط مساندة وجهات طوارئ للتواصل في الأردن</p></div>
     </div>
 
     {emergencyMessage && <div role="alert" className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-7 text-rose-900"><div className="mb-1 flex items-center gap-2 font-bold"><ShieldAlert size={17}/> الأولوية لسلامتك الآن</div>{emergencyMessage}<p className="mt-2 font-semibold">إذا كنت في خطر مباشر، اتصل بالطوارئ 911 الآن أو اطلب من شخص تثق به أن يبقى معك.</p></div>}
 
     <div className="mt-6 grid gap-3">
       <article className="group flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#123B48]/10 bg-[#FAF8F4] p-5 transition hover:border-[#0D9488]/40 hover:bg-[#DDEFEA]/30 sm:flex-row sm:items-center">
-        <div><h3 className="font-bold text-base text-[#123B48]">خط المساندة النفسية الوطني (مجاني)</h3><p className="mt-1 text-xs text-[#123B48]/70">استشارات وإرشاد نفسي مهني سري</p><p className="mt-2 text-[11px] leading-5 text-[#56736F]">خط مؤسسة نهر الأردن للدعم النفسي والإرشاد الأسري.</p></div>
+        <div><h3 className="font-bold text-base text-[#123B48]">خط 110 للأسرة والطفل والمساندة النفسية</h3><p className="mt-1 text-xs text-[#123B48]/70">دعم وإرشاد بسرية ومن دون أحكام، من مؤسسة نهر الأردن.</p><p className="mt-2 text-[11px] leading-5 text-[#56736F]">إذا لم تتمكن من الوصول للخط، تواصل مع شخص تثق به أو توجّه لأقرب مركز صحي.</p></div>
         <a href="tel:110" aria-label="اتصل بخط المساندة 110" className="inline-flex items-center gap-2 rounded-xl border border-[#0D9488]/30 bg-[#DDEFEA]/80 px-4 py-2 font-mono text-xl font-extrabold text-[#0D9488] transition group-hover:bg-[#0D9488] group-hover:text-white"><Phone size={17}/>110</a>
       </article>
       <article className="group flex flex-col items-start justify-between gap-4 rounded-2xl border border-[#123B48]/10 bg-[#FAF8F4] p-5 transition hover:border-rose-300 hover:bg-rose-50/40 sm:flex-row sm:items-center">
@@ -236,7 +370,7 @@ function SupportPanel({ emergencyMessage }) {
       </article>
     </div>
 
-    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-[#E6B68A]/25 bg-[#E6B68A]/20 p-4 text-xs leading-6 text-[#765639]"><ShieldCheck className="mt-1 shrink-0" size={17}/><p>خط 110 مجاني وسري. رقم الطوارئ 911 متاح على مدار الساعة للحالات العاجلة؛ عند وجود خطر مباشر، اتصل به فورًا.</p></div>
+    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-[#E6B68A]/25 bg-[#E6B68A]/20 p-4 text-xs leading-6 text-[#765639]"><ShieldCheck className="mt-1 shrink-0" size={17}/><p>خط 110 مجاني وسري. رقم الطوارئ 911 متاح على مدار الساعة؛ عند وجود خطر مباشر، اتصل به فورًا.</p></div>
     <p className="mt-4 text-[10px] leading-5 text-[#78908A]">هذه المعلومات للتوجيه الأولي ولا تغني عن الرعاية الطبية المباشرة عند الحاجة.</p>
   </motion.section>;
 }
