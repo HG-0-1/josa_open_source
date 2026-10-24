@@ -12,12 +12,16 @@ variables (export these before starting the server):
 
 - `OLLAMA_API_URL`: defaults to `http://127.0.0.1:11434/api/generate`.
 - `OLLAMA_MODEL`: defaults to `llama3.2:3b`.
+- `OLLAMA_TIMEOUT_SECONDS`: HTTP socket timeout in seconds; defaults to `90`.
+  Accepts a positive finite number (including fractional seconds). For example,
+  run `export OLLAMA_TIMEOUT_SECONDS=120` before starting the server. Invalid
+  values return HTTP 503 without contacting Ollama.
 - `MOTANAFAS_DEV_MOCK_AI=true`: explicitly enables the original fixed mock for
   local development only. Leave unset for real generation. It is never enabled
   automatically on an Ollama failure.
 
 The generation code is adapted from `origin/Jood:ai_service.py`, with
-non-clinical prompts, Pydantic validation, a 25-second HTTP timeout, and no
+non-clinical prompts, Pydantic validation, a configurable HTTP timeout, and no
 fabricated fallback. Unavailable Ollama, HTTP errors, timeouts, and invalid
 responses return HTTP 503 with a generic Arabic `detail` message.
 

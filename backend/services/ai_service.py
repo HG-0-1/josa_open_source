@@ -5,6 +5,7 @@ responses, or exceptions are logged or stored by this module.
 """
 
 import json
+import math
 import os
 import re
 from http.client import HTTPException as HTTPClientError
@@ -47,13 +48,16 @@ def reframe_thought(thought_text: str) -> dict:
         "options": {"temperature": 0.1, "num_predict": 220},
     }
     try:
+        timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90"))
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("Timeout must be a positive finite number")
         request = Request(
             os.getenv("OLLAMA_API_URL", "http://127.0.0.1:11434/api/generate"),
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urlopen(request, timeout=25) as response:
+        with urlopen(request, timeout=timeout) as response:
             # Bound the response size; no content is written to disk or logs.
             body = response.read(65537)
         if len(body) > 65536:

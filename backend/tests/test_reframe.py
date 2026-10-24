@@ -21,6 +21,7 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
             "MOTANAFAS_DEV_MOCK_AI": "false",
             "OLLAMA_API_URL": "http://127.0.0.1:11434/api/generate",
             "OLLAMA_MODEL": "llama3.2:3b",
+            "OLLAMA_TIMEOUT_SECONDS": "90",
         })
         environment.start()
         self.addCleanup(environment.stop)
@@ -100,7 +101,7 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
         request = self.http.call_args.args[0]
         self.assertEqual(request.full_url, "http://127.0.0.1:11435/api/generate")
         self.assertEqual(request.get_method(), "POST")
-        self.assertEqual(self.http.call_args.kwargs["timeout"], 25)
+        self.assertEqual(self.http.call_args.kwargs["timeout"], 90)
         payload = json.loads(request.data)
         self.assertEqual(payload["model"], "test-model")
         self.assertIs(payload["stream"], False)
@@ -112,15 +113,39 @@ class ReframeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_defaults_and_english_prompt(self):
         with patch.dict(os.environ):
-            for name in ("OLLAMA_API_URL", "OLLAMA_MODEL", "MOTANAFAS_DEV_MOCK_AI"):
+            for name in ("OLLAMA_API_URL", "OLLAMA_MODEL", "MOTANAFAS_DEV_MOCK_AI",
+                         "OLLAMA_TIMEOUT_SECONDS"):
                 os.environ.pop(name, None)
             status, _ = await self.post({"text": "I failed my job interview"})
         self.assertEqual(status, 200)
         request = self.http.call_args.args[0]
         self.assertEqual(request.full_url, "http://127.0.0.1:11434/api/generate")
+        self.assertEqual(self.http.call_args.kwargs["timeout"], 90)
         payload = json.loads(request.data)
         self.assertEqual(payload["model"], "llama3.2:3b")
         self.assertIn("values in English", payload["system"])
+
+    async def test_configurable_timeout(self):
+        for value in ("120", "45.5"):
+            with self.subTest(timeout=value), patch.dict(
+                os.environ, {"OLLAMA_TIMEOUT_SECONDS": value}
+            ):
+                status, response = await self.post({"text": "حاسس إني فاشل"})
+                self.assertEqual(status, 200)
+                self.assertEqual(response, {"emergency": False, **self.analysis})
+                self.assertEqual(self.http.call_args.kwargs["timeout"], float(value))
+
+    async def test_invalid_timeout_returns_503_without_http_call(self):
+        for value in ("", "invalid", "0", "-1", "nan", "inf"):
+            with self.subTest(timeout=value), patch.dict(
+                os.environ, {"OLLAMA_TIMEOUT_SECONDS": value}
+            ):
+                status, response = await self.post({"text": "حاسس إني فاشل"})
+                self.assertEqual(status, 503)
+                self.assertEqual(response, {
+                    "detail": "خدمة المساعدة الآلية غير متاحة حالياً. يرجى المحاولة لاحقاً."
+                })
+                self.http.assert_not_called()
 
     async def assert_private_unavailable_response(self):
         private_text = "هذه فكرة حساسة خاصة للاختبار"
